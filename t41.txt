@@ -1,0 +1,27 @@
+proof safe
+  assume asm: "\<xi> \<Turnstile>\<^sub>c \<phi> R\<^sub>c \<psi>"
+
+  show "\<xi> \<Turnstile>\<^sub>c (\<phi> M\<^sub>c \<psi>) or\<^sub>c (G\<^sub>c \<psi>)"
+  proof (cases "\<xi> \<Turnstile>\<^sub>c G\<^sub>c \<psi>")
+    case False
+
+    then obtain i where "\<not> suffix i \<xi> \<Turnstile>\<^sub>c \<psi>" and "\<forall>j<i. suffix j \<xi> \<Turnstile>\<^sub>c \<psi>"
+      using exists_least_iff[of "\<lambda>i. \<not> suffix i \<xi> \<Turnstile>\<^sub>c \<psi>"] by force
+
+    then show ?thesis
+      using asm by force
+  qed simp
+next
+  assume asm: "\<xi> \<Turnstile>\<^sub>c (\<phi> R\<^sub>c \<psi>) and\<^sub>c (F\<^sub>c \<phi>)"
+
+  then show "\<xi> \<Turnstile>\<^sub>c \<phi> M\<^sub>c \<psi>"
+  proof (cases "\<xi> \<Turnstile>\<^sub>c F\<^sub>c \<phi>")
+    case True
+
+    then obtain i where "suffix i \<xi> \<Turnstile>\<^sub>c \<phi>" and "\<forall>j<i. \<not> suffix j \<xi> \<Turnstile>\<^sub>c \<phi>"
+      using exists_least_iff[of "\<lambda>i. suffix i \<xi> \<Turnstile>\<^sub>c \<phi>"] by force
+
+    then show ?thesis
+      using asm by force
+  qed simp
+qed (unfold semantics_ltlc.simps; insert not_less, blast)+

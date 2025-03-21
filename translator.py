@@ -1,4 +1,6 @@
 #!/bin/env python
+from socket import socket
+import logging
 
 USAGE = """
 translator.py <ADDRESS OF SERVER>
@@ -31,45 +33,143 @@ from IsaREPL import Client
 from sqlitedict import SqliteDict
 import msgpack as mp
 import sys
+import os
 import concurrent.futures
 import threading
+import psutil
+import time
+
+# Add logging configuration after imports
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 if len(sys.argv) < 4:
-    print(USAGE)
+    logger.error(USAGE)
     exit(1)
 
 addr = sys.argv[1]
-if len(sys.argv) > 5:
-    numproc = int(sys.argv[4])
-else:
-    with Client(addr, 'HOL') as c:
+with Client(addr, 'HOL') as c:
+    pid = c.pid
+    if len(sys.argv) > 5:
+        numproc = int(sys.argv[4])
+    else:
         numproc = int(c.num_processor() * 0.8 + 1)
-        print(f"using {numproc} workers")
+        logger.info(f"using {numproc} workers")
 
 targets = []
 with open(sys.argv[3]) as file:
     targets = [line.rstrip() for line in file]
 
-INIT_SCRIPT = """
-ML_Translator_Top.init_translator (Path.explode "/tmp/xxx") (ML_Translator_Top.interactive_reporter());
+os.makedirs(f"{os.getcwd()}/translation_tmp", exist_ok=True)
+INIT_SCRIPT = f"""
+ML_Translator_Top.init_translator (Path.explode "{os.getcwd()}/translation_tmp") (ML_Translator_Top.interactive_reporter());
 REPL_Server.register_app "Minilang-Translator" ML_Translator_Top.REPL_App
 """
 
 def encode_pos (pos):
-    return f'{pos[3][1]}#{pos[0]}'
+    return f'{pos[3][1]}:{pos[0]}'
+
+def encode_pos2 (pos):
+    return f'{pos[3][1]}:{pos[0]}:{pos[1]}'
+
+def check_cpu_usage(pid, timeout_minutes=10, threshold=70):
+    """
+    Monitor CPU usage of Isabelle processes and kill the specified process
+    if CPU usage remains below threshold for the specified timeout period.
+    
+    Args:
+        pid: Process ID to kill if conditions are met
+        timeout_minutes: Time in minutes to wait before killing process
+        threshold: CPU usage threshold percentage
+    """
+    logger.info(f"Starting CPU usage monitor for PID {pid} (threshold: {threshold}%, timeout: {timeout_minutes} minutes)")
+    
+    def monitor_cpu():
+        consecutive_low_usage = 0
+        check_interval = 60  # Check every 60 seconds
+        max_consecutive_checks = (timeout_minutes * 60) // check_interval
+        
+        while True:
+            try:
+                # Get updated CPU percentages and refresh process list
+                isabelle_processes = []
+                
+                # First pass: collect processes and initialize CPU measurement
+                for p in psutil.process_iter(['pid', 'name', 'cpu_percent']):
+                    try:
+                        exe_path = p.exe()
+                        if 'isabelle' in exe_path.lower():
+                            # First call to cpu_percent() initializes measurement
+                            p.cpu_percent()
+                            isabelle_processes.append(p)
+                    except (psutil.AccessDenied, psutil.NoSuchProcess, FileNotFoundError):
+                        continue
+                
+                # Wait for CPU measurement to be meaningful
+                time.sleep(1)
+                
+                # Second pass: actually measure CPU usage
+                cpu_usages = []
+                active_processes = []
+                
+                for p in isabelle_processes:
+                    try:
+                        # Second call to cpu_percent() returns actual value
+                        cpu_percent = p.cpu_percent()
+                        cpu_usages.append(cpu_percent)
+                        active_processes.append(p)
+                    except (psutil.AccessDenied, psutil.NoSuchProcess):
+                        # Process might have terminated between measurements
+                        continue
+                
+                avg_cpu = sum(cpu_usages) if cpu_usages else 0
+                
+                logger.info(f"Isabelle processes CPU usage: {avg_cpu:.1f}% (found {len(active_processes)} processes)")
+                
+                if avg_cpu < threshold:
+                    consecutive_low_usage += 1
+                    if consecutive_low_usage >= max_consecutive_checks:
+                        logger.warning(f"CPU usage below {threshold}% for {timeout_minutes} minutes. Killing process {pid}")
+                        try:
+                            os.kill(pid, 9)  # SIGKILL
+                            logger.info(f"Process {pid} killed successfully")
+                            break
+                        except OSError as e:
+                            logger.error(f"Failed to kill process {pid}: {e}")
+                            break
+                else:
+                    consecutive_low_usage = 0
+            except Exception as e:
+                logger.error(f"Error monitoring CPU usage: {e}")
+                break
+                
+            time.sleep(check_interval)
+    
+    # Start monitoring in a separate thread
+    monitor_thread = threading.Thread(target=monitor_cpu, daemon=True)
+    monitor_thread.start()
+    logger.info("CPU usage monitor started in background")
+
+check_cpu_usage(pid)
+
 
 with SqliteDict(sys.argv[2]) as db:
     with concurrent.futures.ThreadPoolExecutor(max_workers=numproc) as executor:
-        def translate(path):
-            if path in db:
-                print(f"skipped {path}")
+        def translate(rpath):
+            if rpath in db:
+                logger.info(f"skipped {rpath}")
                 return
+            path=os.path.abspath(rpath)
             with Client(addr, 'HOL') as c:
                 c.set_register_thy(False)
                 c.set_trace(False)
                 c.load_theory(['Minilang_Translator.MS_Translator_Top'])
                 c.run_ML("Minilang_Translator.MS_Translator_Top", INIT_SCRIPT)
-                print(path)
+                logger.info(path)
 
                 def interact():
                     while True:
@@ -84,37 +184,53 @@ with SqliteDict(sys.argv[2]) as db:
                                 mp.pack(run, c.cout)
                                 c.cout.flush()
                             case (1, pos, err):
-                                print(f"line {pos[0]} fails")
-                                print(err)
+                                logger.error(f"{pos[3][1]}:{pos[0]} fails")
+                                logger.error(err)
                                 pos = encode_pos(pos)
                                 db[pos] = (False, err)
                                 db.commit()
                             case (2, pos, ret):
-                                print(f"line {pos[0]} succeeds")
-                                print(ret)
+                                logger.info(f"{pos[3][1]}:{pos[0]} succeeds")
+                                logger.info(ret['refined'])
                                 pos = encode_pos(pos)
                                 db[pos] = (True, ret)
                                 db.commit()
                             case 3:
                                 break
+                            case (4, pos, src):
+                                pos = encode_pos2(pos)
+                                db[pos] = src
+                            case (5, pos, header):
+                                pos = encode_pos(pos)
+                                db[':header:'+pos] = header
                             case X:
-                                print(X)
+                                logger.error(f"Error translating {path}: {X}")
                                 raise Exception("BUG")
 
                 c.run_app("Minilang-Translator")
-                print(f"translating {path}")
+                logger.info(f"translating {path}")
                 mp.pack(path, c.cout)
                 c.cout.flush()
                 interact()
-                db[path] = True
+                logger.info(f"finished {path}")
+                db[rpath] = True
+                db.commit()
+
 
         def task(path):
             try:
                 translate(path)
+            except ConnectionError as e:
+                logger.error(f"Connection error: {e}")
+                # Force abort the entire program even when called from ThreadPoolExecutor
+                os._exit(1)  # Use os._exit to force immediate termination without cleanup
             except Exception as e:
-                print(e)
-                exit(1)
+                logger.error(f"Error translating {path}: {e}")
 
-        for path in targets:
-            executor.submit(task, path)
+        try:
+            for path in targets:
+                executor.submit(task, path)
+        except Exception as e:
+            logger.error(f"Error submitting tasks: {e}")
+            os._exit(1)  # Use os._exit to force immediate termination without cleanup
 

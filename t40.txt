@@ -1,0 +1,58 @@
+proof-
+  have f0: "i \<ge> 1"  
+    using linorder_not_less assms(3) by auto
+  have "(U\<^sub>f * U\<^sub>f) $$ (i,j) = (\<Sum>k \<in> {i-1,i}. U\<^sub>f $$ (i,k) * U\<^sub>f $$ (k,j)) " 
+    using U\<^sub>f_mult_without_empty_summands_odd[of i j U\<^sub>f ] assms by simp
+  moreover have "(\<Sum>k \<in> {i-1,i}. U\<^sub>f $$ (i,k) * U\<^sub>f $$ (k,j)) 
+                 = U\<^sub>f $$ (i,i-1) * U\<^sub>f $$ (i-1,j) +  U\<^sub>f $$ (i,i) * U\<^sub>f $$ (i,j)"
+    using f0 by simp
+  moreover have "U\<^sub>f $$ (i,i) * U\<^sub>f $$ (i,j) = (1-f(i div 2)) * U\<^sub>f $$ (i,j)" 
+    using assms(1,2) by simp
+  moreover have f1: "U\<^sub>f $$ (i,i-1) * U\<^sub>f $$ (i-1,j) = f(i div 2) * U\<^sub>f $$ (i-1,j)" 
+    using assms(1) assms(3) by simp
+  ultimately have f2: "(U\<^sub>f * U\<^sub>f) $$ (i,j) = f(i div 2) * U\<^sub>f $$ (i-1,j) + (1-f(i div 2)) * U\<^sub>f $$ (i,j)" by simp
+  then show "?thesis"
+  proof (induct rule: disj_four_cases)
+    show "j=i \<or> (j=i+1 \<and> odd j) \<or> (j=i-1 \<and> even j \<and> i\<ge>1) \<or> (j\<noteq>i \<and> \<not>(j=i+1 \<and> odd j) \<and> \<not> (j=i-1 \<and> even j \<and> i\<ge>1))"
+      by linarith
+  next
+    assume a0:"j=i"
+    then have "U\<^sub>f $$ (i,j) = (1-f(i div 2))"
+      using assms(1,2) by simp
+    moreover have "U\<^sub>f $$ (i-1,j) = f(i div 2)"
+      using a0 assms
+      by (metis index_transpose_mat(1) jozsa_transform_coeff(2) less_imp_diff_less odd_two_times_div_two_nat 
+          odd_two_times_div_two_succ transpose_of_jozsa_transform)
+    ultimately have "(U\<^sub>f * U\<^sub>f) $$ (i,j) = f(i div 2) * f(i div 2) + (1-f(i div 2)) * (1-f(i div 2))"
+      using f2 by simp
+    moreover have "f(i div 2) * f(i div 2) + (1-f(i div 2)) * (1-f(i div 2)) = 1" 
+      using f_values assms(1)
+      by (metis (no_types, lifting) Nat.minus_nat.diff_0 diff_add_0 diff_add_inverse jozsa_transform_dim(1) 
+          less_power_add_imp_div_less mem_Collect_eq mult_eq_if one_power2 power2_eq_square power_one_right) 
+    ultimately show "(U\<^sub>f * U\<^sub>f) $$ (i,j) = 1\<^sub>m (dim_col U\<^sub>f) $$ (i,j)" by(metis assms(2) a0 index_one_mat(1) of_nat_1)
+  next
+    assume a0:"(j=i+1 \<and> odd j)"
+    then show "(U\<^sub>f * U\<^sub>f) $$ (i,j) = 1\<^sub>m (dim_col U\<^sub>f) $$ (i,j)" 
+      using assms(3) dvd_diffD1 odd_one even_plus_one_iff by blast
+  next
+    assume a0:"(j=i-1 \<and> even j \<and> i\<ge>1)"
+    then have "(U\<^sub>f * U\<^sub>f) $$ (i,j) = f(i div 2) * (1-f(i div 2)) + (1-f(i div 2)) * f(i div 2)" 
+      using f0 f1 f2 assms
+      by (metis jozsa_transform_coeff(1) Groups.ab_semigroup_mult_class.mult.commute even_succ_div_two f2 
+          jozsa_transform_dim odd_two_times_div_two_nat odd_two_times_div_two_succ of_nat_add of_nat_mult)
+    then show "(U\<^sub>f * U\<^sub>f) $$ (i,j) = 1\<^sub>m (dim_col U\<^sub>f) $$ (i,j)" 
+      using assms(1) a0 by auto
+  next 
+    assume a0:"j\<noteq>i \<and> \<not>(j=i+1 \<and> odd j) \<and> \<not> (j=i-1 \<and> even j \<and> i\<ge>1)"
+    then have "U\<^sub>f $$ (i,j) = 0" 
+      by (metis assms(1,2) index_transpose_mat(1) jozsa_transform_coeff_is_zero jozsa_transform_dim transpose_of_jozsa_transform)
+    moreover have "U\<^sub>f $$ (i-1,j) = 0" 
+      using assms a0 f0 
+      by auto (smt One_nat_def Suc_n_not_le_n add_diff_inverse_nat assms(1) assms(2) diff_Suc_less even_add 
+jozsa_transform_coeff_is_zero jozsa_axioms less_imp_le less_le_trans less_one odd_one)
+    ultimately have "(U\<^sub>f * U\<^sub>f) $$ (i,j) = (1-f(i div 2)) * 0 +  f(i div 2) * 0" 
+      using f2 by simp
+    then show "(U\<^sub>f * U\<^sub>f) $$ (i,j) = 1\<^sub>m (dim_col U\<^sub>f) $$ (i,j)" 
+      using a0 assms by (metis add.left_neutral index_one_mat(1) jozsa_transform_dim mult_0_right of_nat_0)
+  qed
+qed

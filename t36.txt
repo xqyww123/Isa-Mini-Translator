@@ -1,0 +1,177 @@
+using assms
+proof -
+  have Goal: "\<And>P Rs a x P' C. \<lbrakk>P \<longmapsto> Rs; Rs = a<\<nu>x> \<prec> P'; x \<sharp> P\<rbrakk> \<Longrightarrow> F C P a x P'"
+  proof -
+    fix P Rs a x P' C
+    assume "P \<longmapsto> Rs" and "Rs = a<\<nu>x> \<prec> P'" and "x \<sharp> P"
+    thus "F C P a x P'"
+    proof(nominal_induct avoiding: C a x P' rule: TransitionsEarly.strong_induct)
+      case(Tau P)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Input P a x)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Output P a b)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Match P Rs b C a x P')
+      thus ?case 
+        by(force intro: cMatch simp add: residual.inject) 
+    next
+      case(Mismatch P Rs b c C a x P')
+      thus ?case 
+        by(force intro: cMismatch simp add: residual.inject) 
+    next
+      case(Sum1 P Q Rs C)
+      thus ?case by(force intro: cSum1)
+    next
+      case(Sum2 P Q Rs C)
+      thus ?case by(force intro: cSum2)
+    next
+      case(Open P a b P' C a' x P'')
+      have "b \<sharp> x" by fact hence bineqx: "b \<noteq> x" by simp
+      moreover have "a<\<nu>b> \<prec> P' = a'<\<nu>x> \<prec> P''" by fact
+      ultimately have aeqa': "a=a'" and P'eqP'': "P'' = [(b, x)] \<bullet> P'"
+        by(simp add: residual.inject name_abs_eq)+
+      have "x \<sharp> <\<nu>b>P" by fact 
+      with bineqx have xFreshP: "x \<sharp> P" by(simp add: name_fresh_abs)
+      have aineqb: "a \<noteq> b" by fact
+
+      have PTrans: "P \<longmapsto>a[b] \<prec> P'" by fact
+      with xFreshP have xineqa: "x \<noteq> a" by(force dest: freshAction)
+      from PTrans have "([(b, x)] \<bullet> P) \<longmapsto>[(b, x)] \<bullet> (a[b] \<prec> P')" by(rule TransitionsEarly.eqvt)
+      with P'eqP'' xineqa aineqb have Trans: "([(b, x)] \<bullet> P) \<longmapsto>a[x] \<prec> P''"
+        by(auto simp add: name_calc)
+      hence "F C (<\<nu>x>([(b, x)] \<bullet> P)) a x P''" using xineqa by(blast intro: cOpen)
+      with xFreshP aeqa' show ?case by(simp add: alphaRes)
+    next
+      case(Par1B P  a x P' Q C a' x' P'')
+      have "x \<sharp> x'" by fact hence xineqx': "x \<noteq> x'" by simp
+      moreover have Eq: "a<\<nu>x> \<prec> (P' \<parallel> Q) = a'<\<nu>x'> \<prec> P''" by fact
+      hence aeqa': "a = a'" by(simp add: residual.inject)
+      have xFreshQ: "x \<sharp> Q" by fact
+      have "x' \<sharp> P \<parallel> Q" by fact
+      hence x'FreshP: "x' \<sharp> P" and x'FreshQ: "x' \<sharp> Q" by simp+
+      have P''eq: "P'' = ([(x, x')] \<bullet> P') \<parallel> Q"
+      proof -
+        from Eq xineqx' have "(P' \<parallel> Q) = [(x, x')] \<bullet> P''"
+          by(simp add: residual.inject name_abs_eq)
+        hence "([(x, x')] \<bullet> (P' \<parallel> Q)) = P''" by simp
+        with x'FreshQ xFreshQ show ?thesis by(simp add: name_fresh_fresh)
+      qed
+
+      have "x \<sharp> P''" by fact
+      with P''eq have x'FreshP': "x' \<sharp> P'" by(simp add: name_fresh_left name_calc)
+
+      have "P \<longmapsto>a<\<nu>x> \<prec> P'" by fact
+      with x'FreshP' aeqa' have "P \<longmapsto>a'<\<nu>x'> \<prec> ([(x, x')] \<bullet> P')"
+        by(simp add: alphaBoundOutput)
+      moreover have "\<And>C. F C P a x' ([(x, x')] \<bullet> P')"
+      proof -
+        fix C
+        have "\<And>C a' x' P''. \<lbrakk>a<\<nu>x> \<prec> P' = a'<\<nu>x'> \<prec> P''; x' \<sharp> P\<rbrakk> \<Longrightarrow> F C P a' x' P''" by fact
+        moreover with aeqa' xineqx' x'FreshP' have "a<\<nu>x> \<prec> P' = a'<\<nu>x'> \<prec> ([(x, x')] \<bullet> P')"
+          by(simp add: residual.inject name_abs_eq name_fresh_left name_calc)
+        ultimately show "F C P a x' ([(x, x')] \<bullet> P')" using x'FreshP aeqa' by blast 
+      qed
+      ultimately have "F C (P \<parallel> Q) a' x' (([(x, x')] \<bullet> P') \<parallel> Q)" using x'FreshQ aeqa'
+        by(blast intro: cPar1B)
+      with P''eq show ?case by simp
+    next
+      case(Par1F P P' Q \<alpha>)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Par2B Q a x Q' P C a' x' Q'')
+      have "x \<sharp> x'" by fact hence xineqx': "x \<noteq> x'" by simp
+      moreover have Eq: "a<\<nu>x> \<prec> (P \<parallel> Q') = a'<\<nu>x'> \<prec> Q''" by fact
+      hence aeqa': "a = a'" by(simp add: residual.inject)
+      have xFreshP: "x \<sharp> P" by fact
+      have "x' \<sharp> P \<parallel> Q" by fact
+      hence x'FreshP: "x' \<sharp> P" and x'FreshQ: "x' \<sharp> Q" by simp+
+      have Q''eq: "Q'' = P \<parallel> ([(x, x')] \<bullet> Q')"
+      proof -
+        from Eq xineqx' have "(P \<parallel> Q') = [(x, x')] \<bullet> Q''"
+          by(simp add: residual.inject name_abs_eq)
+        hence "([(x, x')] \<bullet> (P \<parallel> Q')) = Q''" by simp
+        with x'FreshP xFreshP show ?thesis by(simp add: name_fresh_fresh)
+      qed
+
+      have "x \<sharp> Q''" by fact
+      with Q''eq have x'FreshQ': "x' \<sharp> Q'" by(simp add: name_fresh_left name_calc)
+
+      have "Q \<longmapsto>a<\<nu>x> \<prec> Q'" by fact
+      with x'FreshQ' aeqa' have "Q \<longmapsto>a'<\<nu>x'> \<prec> ([(x, x')] \<bullet> Q')"
+        by(simp add: alphaBoundOutput)
+      moreover have "\<And>C. F C Q a x' ([(x, x')] \<bullet> Q')"
+      proof -
+        fix C
+        have "\<And>C a' x' Q''. \<lbrakk>a<\<nu>x> \<prec> Q' = a'<\<nu>x'> \<prec> Q''; x' \<sharp> Q\<rbrakk> \<Longrightarrow> F C Q a' x' Q''" by fact
+        moreover with aeqa' xineqx' x'FreshQ' have "a<\<nu>x> \<prec> Q' = a'<\<nu>x'> \<prec> ([(x, x')] \<bullet> Q')"
+          by(simp add: residual.inject name_abs_eq name_fresh_left name_calc)
+        ultimately show "F C Q a x' ([(x, x')] \<bullet> Q')" using x'FreshQ aeqa' by blast 
+      qed
+      ultimately have "F C (P \<parallel> Q) a' x' (P \<parallel> ([(x, x')] \<bullet> Q'))" using x'FreshP aeqa'
+        by(blast intro: cPar2B)
+      with Q''eq show ?case by simp
+    next
+      case(Par2F P P' Q \<alpha>)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Comm1 P P' Q Q' a b x)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Comm2 P P' Q Q' a b x)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Close1 P P' Q Q' a x y)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Close2 P P' Q Q' a x y)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(ResB P a x P' y C a' x' P'')
+      have "x \<sharp> x'" by fact hence xineqx': "x \<noteq> x'" by simp
+      moreover have Eq: "a<\<nu>x> \<prec> (<\<nu>y>P') = a'<\<nu>x'> \<prec> P''" by fact
+      hence aeqa': "a = a'" by(simp add: residual.inject)
+      have "y \<sharp> x'" by fact hence yineqx': "y \<noteq> x'" by simp
+      moreover have "x' \<sharp> <\<nu>y>P" by fact
+      ultimately have x'FreshP: "x' \<sharp> P" by(simp add: name_fresh_abs)
+      have yineqx: "y \<noteq> x" and yineqa: "y \<noteq> a" and yFreshC: "y \<sharp> C" by fact+
+
+      have P''eq: "P'' = <\<nu>y>([(x, x')] \<bullet> P')"
+      proof -
+        from Eq xineqx' have "<\<nu>y>P' = [(x, x')] \<bullet> P''"
+          by(simp add: residual.inject name_abs_eq)
+        hence "([(x, x')] \<bullet> (<\<nu>y>P')) = P''" by simp
+        with yineqx' yineqx show ?thesis by(simp add: name_fresh_fresh)
+      qed
+
+      have "x \<sharp> P''" by fact
+      with P''eq yineqx  have x'FreshP': "x' \<sharp> P'" by(simp add: name_fresh_left name_calc name_fresh_abs)
+
+      have "P \<longmapsto>a<\<nu>x> \<prec> P'" by fact
+      with x'FreshP' aeqa' have "P \<longmapsto>a'<\<nu>x'> \<prec> ([(x, x')] \<bullet> P')"
+        by(simp add: alphaBoundOutput)
+      moreover have "\<And>C. F C P a x' ([(x, x')] \<bullet> P')"
+      proof -
+        fix C
+        have "\<And>C a' x' P''. \<lbrakk>a<\<nu>x> \<prec> P' = a'<\<nu>x'> \<prec> P''; x' \<sharp> P\<rbrakk> \<Longrightarrow> F C P a' x' P''" by fact
+        moreover with aeqa' xineqx' x'FreshP' have "a<\<nu>x> \<prec> P' = a'<\<nu>x'> \<prec> ([(x, x')] \<bullet> P')"
+          by(simp add: residual.inject name_abs_eq name_fresh_left name_calc)
+        ultimately show "F C P a x' ([(x, x')] \<bullet> P')" using x'FreshP aeqa' by blast 
+      qed
+      ultimately have "F C (<\<nu>y>P) a' x' (<\<nu>y>([(x, x')] \<bullet> P'))" using yineqx' yineqa yFreshC aeqa'
+        by(force intro: cResB)
+      with P''eq show ?case by simp
+    next
+      case(ResF P P' \<alpha> y)
+      thus ?case by(simp add: residual.inject)
+    next
+      case(Bang P Rs)
+      thus ?case by(force intro: cBang)
+    qed
+  qed
+    
+  with a xFreshP show ?thesis by simp
+qed

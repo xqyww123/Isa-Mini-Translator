@@ -1,8 +1,10 @@
 signature ML_TRANSLATOR_TOP = sig
 
-type reporter = { succeed: Position.T * string -> unit,
+type reporter = { succeed: Position.T * (string * string) list -> unit,
                   start: Position.T -> bool,
-                  fail : Position.T * exn -> unit }
+                  fail : Position.T * exn -> unit,
+                  declaration : Position.T * string -> unit,
+                  new_thy : Position.T * Thy_Header.header -> unit }
 
 val interactive_reporter : unit -> reporter
 (*val socket_reporter : BinIO.StreamIO.instream * BinIO.StreamIO.outstream
@@ -56,52 +58,135 @@ val extract_proof =
    in pass [BWD]
   end
 
+fun is_theory (Command_Span.Command_Span (name, _)) = name = "theory"
+  | is_theory _ = false
+fun is_theory' (Command_Span.Span (k, _)) = is_theory k
+
+fun is_end (Command_Span.Command_Span (name, _)) = name = "end"
+  | is_end _ = false
+fun is_end' (Command_Span.Span (k, _)) = is_end k
+
+fun is_declarative (Command_Span.Command_Span (name, _)) =
+  member (op =) ["adhoc_overloading", "alias", "axiomatization", "class", "coinductive",
+                 "coinductive_set", "consts", "datatype", "definition", "fun",
+                 "function", "lift_definition", "overloading", "primcorec", "primcorecursive",
+                 "primrec", "quotient_definition", "quotient_type", "record", "specification",
+                 "type_alias", "type_synonym", "typedecl", "typedef", "chapter", "context",
+                 "corollary", "instance", "instantiation", "interpretation",
+                 "lemma", "lemmas", "locale", "notation", "paragraph", "proposition",
+                 "schematic_goal", "section", "subclass", "sublocale", "subparagraph", "subsection",
+                 "subsubsection", "syntax", "syntax_declaration", "text", "text_raw", "theorem",
+                 "txt", "type_notation", "codatatype", "inductive", "inductive_set"]
+        name
+  | is_declarative _ = false
+fun is_declarative' (Command_Span.Span (k, _)) = is_declarative k
+
+fun has_begin_tail toks =
+  let val toks' = filter Token.is_proper toks
+      val tok = List.last toks'
+   in Token.is_kind Token.Keyword tok andalso
+      Token.content_of tok = "begin"
+  end handle List.Empty => false
+
 in
 
-type reporter = { succeed: Position.T * string -> unit,
+type reporter = { succeed: Position.T * (string * string) list -> unit,
                   start: Position.T -> bool,
-                  fail : Position.T * exn -> unit }
+                  fail : Position.T * exn -> unit,
+                  declaration : Position.T * string -> unit,
+                  new_thy : Position.T * Thy_Header.header -> unit }
 
 fun interactive_reporter () =
   let val success = Unsynchronized.ref 0
       val total   = Unsynchronized.ref 0
-   in { succeed = (fn (pos, str) => (
+   in { succeed = (fn (pos, strs) => (
             success := !success + 1
-          ; REPL.origin_tracing [("Translated line " ^ string_of_int (the (Position.line_of pos))),
+          ; REPL.origin_tracing ([("Translated line " ^ string_of_int (the (Position.line_of pos))),
                                  ", succeeded ", string_of_int (!success), "/", string_of_int (!total),
-                                 "\n", str]
+                                 "\n"] @ maps (fn (k,v) => [k," : ",v,"\n"]) strs)
         )),
         fail   = (fn (pos, E) =>
             REPL.origin_warning ( "Fail to translate " :: string_of_int (the (Position.line_of pos)) ::
                                   ", succeeded " :: string_of_int (!success) :: "/" :: string_of_int (!total)
                                :: "\n" :: Runtime.exn_message_list E )
         ),
-        start  = (fn _ => (total := !total +1; true))
+        start  = (fn _ => (total := !total +1; true)),
+        declaration = (fn (pos, str) =>
+            REPL.origin_warning [str]),
+        new_thy = (fn x => ((@{print} x); ()))
       }
    end
 
-fun REPL_plugin reporter : REPL.collector = fn {current_command, state, remaining} =>
-  if is_proof_command' current_command andalso
+val end_counter' = Thread_Data.var ()
+fun end_counter () =
+  case Thread_Data.get end_counter'
+    of SOME rf => rf
+     | NONE => let val rf = Unsynchronized.ref []
+                in Thread_Data.put end_counter' (SOME rf)
+                 ; rf
+               end
+
+fun REPL_plugin reporter : REPL.collector = fn cfg => fn {current_command, state, remaining} =>
+  let val cnt = end_counter ()
+      val Command_Span.Span (_, toks) = current_command
+      val pos = case current_command of Command_Span.Span (Command_Span.Command_Span (_, pos), _) => pos
+                   | _ => Position.none
+      val next_pos = case remaining
+                  of (_, Command_Span.Span (Command_Span.Command_Span (_, pos), _)) :: _ => pos
+                   | _ => Position.none
+      fun report_decl () =
+        if is_theory' current_command
+        then let
+             val header = Thy_Header.read_tokens Position.none toks
+             fun qualify name = if Long_Name.is_qualified name then name
+                                else Long_Name.qualify (#thy_qualifier cfg) name
+             fun qualify_name {name,imports,keywords} =
+                    {name = apfst qualify name,
+                     imports = map (apfst qualify) imports,
+                     keywords = keywords}
+             val header = qualify_name header
+          in cnt := [true]
+           ; #new_thy reporter (pos, header)
+           ; #declaration reporter (pos, String.concat (Minilang_Aux.print_toks toks))
+         end
+        else let val is_decl = is_declarative' current_command
+          in if has_begin_tail toks
+             then cnt := is_decl :: !cnt
+             else ()
+           ; if is_decl
+        then #declaration reporter (pos, String.concat (Minilang_Aux.print_toks toks))
+        else if is_end' current_command
+        then let
+             val print :: cnt' = !cnt
+          in cnt := cnt'
+           ; if print
+             then #declaration reporter (pos, "end")
+             else ()
+         end
+        else ()
+         end
+   in report_decl ()
+   ; if is_proof_command' current_command andalso
      Toplevel.is_proof state andalso
      let val st = #goal (Proof.raw_goal (Toplevel.proof_of state))
       in not (Thm.is_dummy st) andalso not (Thm.no_prems st)
      end
-  then let val pos  = case hd remaining
-                   of (_, Command_Span.Span (Command_Span.Command_Span (_, pos), _)) => pos
-                    | _ => raise Translation_Fail "Malformed Source"
-   in if #start reporter pos
-    then let
+  then if #start reporter pos
+    then \<^try>\<open>let
         val prf = extract_proof remaining
                |> map (fn Command_Span.Span (_, src) => filter Token.is_proper src)
-        val ast' = MinLang_Translator.translate_m (state, prf)
-        val str  = MinLang_Translator.print_mast true ast'
-     in #succeed reporter (pos, str)
+        val asts = MinLang_Translator.translate_m (state, prf)
+        val strs = map (apsnd (MinLang_Translator.print_mast true)) asts
+        val origin = String.concatWith "\n" (map (String.concat o Minilang_Aux.print_toks) prf)
+        val _ = REPL.origin_warning [origin]
+     in #succeed reporter (pos, next_pos, origin, strs)
       ; (NONE, NONE)
-    end handle E => (
-      #fail reporter (pos, E)
-    ; (NONE, NONE))
+    end catch E => (
+      #fail reporter (pos, next_pos, origin, E)
+    ; (NONE, NONE)) \<close>
     else (NONE, NONE)
-  end else (NONE, NONE)
+  else (NONE, NONE)
+  end
   
 (* fun translate_thy src *)
 
@@ -135,6 +220,11 @@ fun pos_packer pos =
       (line, offset, end_offset, (label, file, id))
   end
 
+fun thy_packer {name, imports, ...} =
+  let open MessagePackBinIO.Unpack MessagePackBinIO.Pack
+   in packPair (packString, packList packString) (fst name, map fst imports)
+  end
+
 fun socket_reporter (cin,cout) =
   let open MessagePackBinIO.Unpack MessagePackBinIO.Pack
    in { start = (fn pos =>
@@ -148,10 +238,16 @@ fun socket_reporter (cin,cout) =
             doPack (packTuple3 (packInt, pos_packer, packString))
                    (1, pos, Minilang_Aux.trim_markup (String.concat (Runtime.exn_message_list E))) cout
           ; BinIO.StreamIO.flushOut cout )),
-        succeed = (fn (pos, str) => (
-            doPack (packTuple3 (packInt, pos_packer, packString))
-                   (2, pos, str) cout
-          ; BinIO.StreamIO.flushOut cout ))
+        succeed = (fn (pos, strs) => (
+            doPack (packTuple3 (packInt, pos_packer, packPairList (packString, packString)))
+                   (2, pos, strs) cout
+          ; BinIO.StreamIO.flushOut cout )),
+        declaration = (fn (pos, line) =>
+            (doPack (packTuple3 (packInt, pos_packer, packString))
+                    (4, pos, line) cout )),
+        new_thy = (fn (pos, header) => (
+            doPack (packTuple3 (packInt, pos_packer, thy_packer)) (5, pos, header) cout
+          ; BinIO.StreamIO.flushOut cout))
       }
   end
 

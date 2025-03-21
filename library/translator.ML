@@ -142,8 +142,9 @@ type mast' = (Minilang.state option * mast) list
 val translate  : Toplevel.state * Token.src list -> ast'
 val translate' : Toplevel.state -> string -> ast'
 
-val translate_m  : Toplevel.state * Token.src list -> mast'
-val translate'm  : Toplevel.state -> string -> mast'
+type version = string (*can be `refined`, `raw` that is not refined*)
+val translate_m  : Toplevel.state * Token.src list -> (string * mast') list
+val translate'm  : Toplevel.state -> string -> (string * mast') list
 
 val print_ast  :  ast' -> string
 val print_mast : bool (*prints response*) -> mast' -> string
@@ -152,6 +153,7 @@ end
 
 structure MinLang_Translator : ML_TRANSLATOR = struct
 open MinLang_Translator Minilang_Aux
+type version = string (*can be `refined`, `raw` that is not refined*)
 
 (*** Tools ***)
 
@@ -270,6 +272,7 @@ in
 
 val where_parser = Parse.$$$ "where" |-- named_insts
 val simp_parser = simp
+val auto_parser = auto
 val rule_tac_parser = Scan.option goal |-- Scan.option (cuttoks named_insts --| $$$ "in") -- thms
 val rule_parser = Scan.option (Args.parens Parse.nat) |-- thms
 
@@ -1330,12 +1333,12 @@ fun print_ty_raw' (Type (N, TS)) = ["("] @ maps print_ty_raw' TS @ [") ", N]
   | print_ty_raw' (TVar (N, _))  = [Term.string_of_vname N]
 fun print_ty_raw ctxt T =
   let val s = String.concat (print_ty_raw' T)
-   in if (Syntax.read_typ ctxt s = T handle _ => false)
+   in if \<^try>\<open>Syntax.read_typ ctxt s = T catch _ => false\<close>
       then s else error "Fail to print type in a raw way"
   end
 fun print_ty ctxt T =
   let val s = trim_markup (Syntax.string_of_typ ctxt T)
-   in if (Syntax.read_typ ctxt s = T handle _ => false) then s else print_ty_raw ctxt T
+   in if \<^try>\<open>Syntax.read_typ ctxt s = T catch _ => false\<close> then s else print_ty_raw ctxt T
   end
 
 fun print_tm_raw'_ty ctxt =
@@ -1373,12 +1376,12 @@ fun print_tm_raw' ctxt =
 fun print_tm ctxt tm =
   let val tm = Envir.beta_eta_contract tm
       val s = trim_markup (Syntax.string_of_term ctxt tm)
-   in if (Syntax.read_term ctxt s aconv tm handle _ => false) then s
+   in if \<^try>\<open>Syntax.read_term ctxt s aconv tm catch _ => false\<close> then s
     else let
       val s = String.concat (print_tm_raw' ctxt tm)
-   in if (Syntax.read_term ctxt s aconv tm handle _ => false) then s
+   in if \<^try>\<open>Syntax.read_term ctxt s aconv tm catch _ => false\<close> then s
     else let val s4 = String.concat (print_tm_raw'_ty ctxt tm)
-      in if (Syntax.read_prop ctxt s4 aconv tm handle _ => false) then s4
+      in if \<^try>\<open>Syntax.read_prop ctxt s4 aconv tm catch _ => false\<close> then s4
          else raise TERM("print_prop", [tm])
      end
   end
@@ -1389,15 +1392,15 @@ fun print_prop ctxt tm =
       val s1 = trim_markup (Syntax.string_of_term ctxt tm)
       fun filter (Const(\<^const_name>\<open>Trueprop\<close>, _) $ X) = X
         | filter X = X
-   in if (Syntax.read_prop ctxt s1 aconv tm handle _ => false) then s1
+   in if \<^try>\<open>Syntax.read_prop ctxt s1 aconv tm catch _ => false\<close> then s1
     else let
       val s2 = trim_markup (Syntax.string_of_term (Config.put Printer.show_types true ctxt) tm)
-   in if (Syntax.read_prop ctxt s2 aconv tm handle _ => false) then s2
+   in if \<^try>\<open>Syntax.read_prop ctxt s2 aconv tm catch _ => false\<close> then s2
     else let
       val s3 = String.concat (print_tm_raw' ctxt (filter tm))
-   in if (Syntax.read_prop ctxt s3 aconv tm handle _ => false) then s3
+   in if \<^try>\<open>Syntax.read_prop ctxt s3 aconv tm catch _ => false\<close> then s3
     else let val s4 = String.concat (print_tm_raw'_ty ctxt (filter tm))
-      in if (Syntax.read_prop ctxt s4 aconv tm handle _ => false) then s4
+      in if \<^try>\<open>Syntax.read_prop ctxt s4 aconv tm catch _ => false\<close> then s4
          else raise TERM("print_prop", [tm])
      end
   end
@@ -2214,11 +2217,7 @@ fun validate s msg ast =
       then ast' else error msg *)
   end
 
-fun validatem ctxt0 s ast =
-  let val (rets, ast') = evalm s ast
-   in Minilang.conclude ctxt0 rets
-    ; ast'
-  end
+
 
 
 end
@@ -2227,7 +2226,7 @@ fun print_mast print_response =
   let fun response' i (s, mast) =
         let val _ = fetch_items ()
             val ctxt = Minilang.context_of (the s)
-            val _ = eval_singlem mast (the s)
+            val _ = try (eval_singlem mast) (the s)
             val ((vs, hs), goals) = fetch_items ()
             val vs' = if null vs then []
                       else indent_of i :: "(*fixes variables "
@@ -2406,7 +2405,11 @@ fun print_mast print_response =
       
 val print_mast = String.concat oo print_mast
 
-
+fun validatem ctxt0 s ast =
+  let val (rets, ast') = evalm s ast
+   in Minilang.conclude ctxt0 rets
+    ; ast'
+  end
 
 datatype blk_behv = OPEN_BLK
 
@@ -3213,6 +3216,7 @@ fun separate_tac time =
           end
 
       fun apply using tac s =
+            \<^try>\<open>
             Timeout.apply (the_default default_time time) Seq.pull
                     (  s
                     |> not (null using) ? Proof.using_cmd [using]
@@ -3220,8 +3224,9 @@ fun separate_tac time =
                |> (fn NONE => raise PRF_FAIL (K "")
                     | SOME (Seq.Result s'', _) => s''
                     | SOME (Seq.Error err, _)  => raise PRF_FAIL err )
-            handle Timeout.TIMEOUT _ => raise PRF_FAIL (fn _ => "Timeout")
-                 | ERROR msg         => raise PRF_FAIL (fn _ => msg)
+            catch Timeout.TIMEOUT _ => raise PRF_FAIL (fn _ => "Timeout")
+                |  ERROR msg         => raise PRF_FAIL (fn _ => msg)
+                | _ => raise PRF_FAIL (fn _ => "")\<close>
       fun apply1 using tac s = s
                    |> Proof.refine_primitive (K (Goal.protect 1))
                    |> apply using tac 
@@ -3235,11 +3240,11 @@ fun separate_tac time =
 
             val s'  = apply using tac s
             val st' = #goal (Proof.goal s')
-            val is_multi_goal = let
+            val is_multi_goal = \<^try>\<open>let
                     val s'p  = apply1 using tac s
                     val st'p = #goal (Proof.goal s'p)
                  in not (Thm.equiv_thm thy (st', st'p))
-                end handle PRF_FAIL _ => true
+                end catch _ => true\<close>
 
          in (*assumption: a tactic either applies to the first goal only or the entire all goals*)
             if is_multi_goal
@@ -3311,16 +3316,16 @@ fun separate_tac time =
                   [tac, Method.Combinator (oi, Method.Then_All_New, tacs)])) leaves_s
         | sep _ (Method.Combinator (_, Method.Orelse, [])) _ = raise PRF_FAIL (K "")
         | sep using (Method.Combinator (oi, Method.Orelse, tac::tacs)) leaves_s =
-            ( sep using tac leaves_s
-              handle err as PRF_FAIL _ =>
+            \<^try>\<open>sep using tac leaves_s
+              catch err =>
                 if null tacs
                 then raise err
-                else sep using (Method.Combinator (oi, Method.Orelse, tacs)) leaves_s )
+                else sep using (Method.Combinator (oi, Method.Orelse, tacs)) leaves_s\<close>
         | sep using (Method.Combinator (_, Method.Try, [tac])) leaves_s =
-            ( sep using tac leaves_s handle PRF_FAIL _ => leaves_s )
+            \<^try>\<open>sep using tac leaves_s catch _ => leaves_s\<close>
         | sep _ (Method.Combinator (_, Method.Try, _)) _ = error "BUG hCRyVI8/SFmTGEbnFjbnWg"
         | sep using (origin as Method.Combinator (_, Method.Repeat1, [tac])) leaves_s =
-          ( case (SOME (sep using tac leaves_s) handle PRF_FAIL _ => NONE)
+          ( case \<^try>\<open>SOME (sep using tac leaves_s) catch _ => NONE\<close>
               of SOME leaves_s' => sep using origin leaves_s'
                | NONE => leaves_s )
         | sep _ (Method.Combinator (_, Method.Repeat1, _)) _ = error "BUG hCRyVI8/SFmTGEbnFjbnWg"
@@ -3476,7 +3481,7 @@ fun match_hyps ctxt fixes ii hpats =
         | match  _  _ [] _  _  = Seq.empty
         | match ret passed ((k,pat)::pats) env ((name,hyp)::hyps) =
             Seq.append
-                (Unify.hounifiers (ctxt, env, [(pat, hyp)])
+                (Unify.hounifiers [] (ctxt, env, [(pat, hyp)])
               |> Seq.maps (fn (env', _) =>
                   if chkenv env'
                   then Seq.append (match (update_ret (k,name) ret) [] (passed @ pats) env' hyps)
@@ -3492,7 +3497,7 @@ fun match_goal ctxt goal =
       val idx = fold Term.maxidx_term Hp (Term.maxidx_term Cp ~1)
    in fn (fixes, Hs, C) =>
       let val env = Envir.empty idx
-          val m = Unify.hounifiers (ctxt, env, [(Cp, C)])
+          val m = Unify.hounifiers [] (ctxt, env, [(Cp, C)])
                |> Seq.maps (fn (env, _) => match_hyps ctxt fixes ii Hp env Hs)
        in Seq.pull m
        |> Option.map (fn ((ret, Envir.Envir {tenv=env,...}),_) =>
@@ -4066,6 +4071,7 @@ fun trans_pass vs [] s = mk_end' vs s
        of "cases"  => translate_cases using name tac toks vs L s
         | "induct" => translate_cases using name tac toks vs L s
         | "induction" => translate_cases using name tac toks vs L s
+        | "nominal_induct" => raise Unsupported "nominal_induct"
         | "msorry" => (
                end_using := merge fact_eq (!end_using, using)
              ; trans_pass vs [] s )
@@ -4187,7 +4193,7 @@ and default_tactic_translation time using tac vs L si0 si1 sxx =
           ; trans_pass vs [] sxx
         end
       val _ = fetch_items ()
-   in case (SOME (eval_singlem mast sxx) handle Minilang.OPR_FAIL _ => NONE)
+   in case \<^try>\<open>SOME (eval_singlem mast sxx) catch _ => NONE\<close>
    of SOME s' =>
       let val (_, SOME goals) = fetch_items ()
        in if length goals - 1 = nd
@@ -4671,19 +4677,19 @@ val move_lemmas = linear_pass (
 *)
 
 
-fun chk s origin L = ( L
+fun chk s origin L = \<^try>\<open>L
            |> evalm s
            |> snd
            |> (fn X =>
              if mast_cheat' X
              then raise Minilang.OPR_FAIL (Minilang.PROOF_FAIL, "")
              else X)
-       handle Minilang.OPR_FAIL _ => origin )
+       catch _ => origin\<close>
 
 local
 val use_parser = Scan.repeat Parse.thm -- (Parse.$$$ "in" |-- Parse.token Parse.embedded)
 
-fun norm_rule_tac (origin as (s, MTACTIC (Method.Source (tok :: toks), using, time)) :: L) =
+fun norm_tac_phase1 (origin as (s, MTACTIC (Method.Source (tok :: toks), using, time)) :: L) =
       let fun norm toks =
             let val ((insts0, thms), _) = rule_tac_parser (toks @ [Token.eof])
              in case insts0
@@ -4694,10 +4700,10 @@ fun norm_rule_tac (origin as (s, MTACTIC (Method.Source (tok :: toks), using, ti
                  in maps (fn (rf, atts) => tokenize_fact (rf, att :: atts)) thms
                 end
             end
-          fun chk L = ( L
+          fun chk L = \<^try>\<open> L
                |> evalm (the s)
                |> snd
-           handle Minilang.OPR_FAIL _ => origin )
+              catch _ => origin \<close>
        in case Token.content_of tok
        of "rule_tac" =>
           chk ((s, MTACTIC (Method.Source (tok :: norm toks), using, time)) :: L)
@@ -4707,14 +4713,35 @@ fun norm_rule_tac (origin as (s, MTACTIC (Method.Source (tok :: toks), using, ti
           chk ((s, MTACTIC (Method.Source (tok :: norm toks), using, time)) :: L)
         | "frule_tac" =>
           chk ((s, MTACTIC (Method.Source (tok :: norm toks), using, time)) :: L)
+        | "insert" => let
+               val (thms, _) = Scan.repeat Parse.thm (toks @ [Token.eof])
+            in if null thms
+             then L
+             else (s, MINSERT thms) :: L
+           end
         | _ => origin
       end
-  | norm_rule_tac L = L
+  | norm_tac_phase1 ((_, MINSERT _) :: L) = L
+  | norm_tac_phase1 L = L
 
 in
 
 val norm_Mtac = linear_passm NONE (
-  norm_rule_tac
+   recursive (
+     fn (s, MTACTIC (Method.Source (tok :: toks), using, time)) :: L =>
+      (case Token.content_of tok
+         of "use" => let
+               val ctxt = Minilang.context_of (the s)
+               val ((using', tac'), _) = use_parser (toks @ [Token.eof])
+               val keywords = Keyword.no_major_keywords (Thy_Header.get_keywords' ctxt)
+               val tac = Parse.read_embedded ctxt keywords (Scan.many Token.not_eof) (Token.input_of tac')
+            in (s, MTACTIC (Method.Source tac, using @ using', time)) :: L
+           end
+          | _ => raise Match )
+      | _ => raise Match )
+
+#> norm_tac_phase1
+
 #>(fn origin as (s, MTACTIC (Method.Source (tok :: toks), using, time)) :: L =>
   let val chk = chk (the s) origin
       val ctxt = Minilang.context_of (the s)
@@ -4767,16 +4794,10 @@ val norm_Mtac = linear_passm NONE (
 
    in case Token.content_of tok
            (* use xxx in yyy *)
-        of "use" => let
-           val ((using', tac'), _) = use_parser (toks @ [Token.eof])
-           val keywords = Keyword.no_major_keywords (Thy_Header.get_keywords' ctxt)
-           val tac = Parse.read_embedded ctxt keywords (Scan.many Token.not_eof) (Token.input_of tac')
-        in (s, MTACTIC (Method.Source tac, using @ using', time)) :: L
-       end
-         | "unfold" => let
+        of "unfold" => let
             val (facts, _) = Parse.thms1 (toks @ [Token.eof])
             val (using, s') = if null using then ([], s)
-                              else let val mast = MTACTIC (method_insert facts, [], NONE)
+                              else let val mast = MINSERT facts
                                        val s' = Option.map (eval_singlem mast) s
                                 in ([(s, mast)], s')
                                end
@@ -4805,24 +4826,25 @@ val norm_Mtac = linear_passm NONE (
            val (thmsx, _) = Scan.repeat Parse.thm (toks @ [Token.eof])
            fun repeat N s =
                 if N >= 100 then raise Minilang.OPR_FAIL (Minilang.PROOF_FAIL, "")
-                else let val mast = mk_rule' thmsx
+                else \<^try>\<open>let val mast = mk_rule' thmsx
                          val s' = eval_singlem mast s
                  in (SOME s, mast) :: repeat (N+1) s'
-                end handle Minilang.OPR_FAIL _ => []
-        in repeat 0 (the s) @ L
+                end catch _ => []\<close>
+        in \<^try>\<open>repeat 0 (the s) @ L
         |> chk
-           handle Minilang.OPR_FAIL _ => origin
+           catch _ => origin\<close>
        end
          | "elim" => let
            val (thmsx, _) = Scan.repeat Parse.thm (toks @ [Token.eof])
-           fun repeat N s =
+           fun repeat N s = \<^try>\<open>
                 if N >= 100 then raise Minilang.OPR_FAIL (Minilang.PROOF_FAIL, "")
                 else let val s' = eval_singlem (MRULE (thmsx, using)) s
                  in (SOME s, MRULE (thmsx, using)) :: repeat (N+1) s'
-                end handle Minilang.OPR_FAIL _ => []
-        in repeat 0 (the s) @ L
+                end catch _ => []\<close>
+        in \<^try>\<open>
+           repeat 0 (the s) @ L
         |> chk
-           handle Minilang.OPR_FAIL _ => origin
+           catch Minilang.OPR_FAIL _ => origin\<close>
        end
          | "dest" => let
            val (thms, _) = Scan.repeat Parse.thm (toks @ [Token.eof])
@@ -4868,6 +4890,16 @@ val norm_Mtac = linear_passm NONE (
            end
    | L => L
 ))
+#> linear_passm NONE (fn L => recursive (
+  fn ((s0, MINSERT arg) :: (_, MCHOOSE arg') :: L) =>
+     (s0, MCHOOSE arg') :: (NONE, MINSERT arg) :: L
+) L)
+#> linear_passm NONE (
+  fn origin as (s0, MINSERT thmsx) :: (_, MTACTIC (tac, using, time)) :: L =>
+      chk (the s0) origin
+          ( (s0, MTACTIC (tac, merge_facts [thmsx, using], time)) :: L )
+   | L => L
+)
 
 end
 
@@ -4897,7 +4929,7 @@ val refinement = linear_passm NONE (
         of SOME mend =>
             let val s = the (fst (hd L))
                      |> Minilang.map_context (
-                          Config.put Phi_Sledgehammer_Solver.sledgehammer_params "timeout = 20")
+                          Config.put Phi_Sledgehammer_Solver.sledgehammer_params "timeout = 15")
              in case try (evalm s) [(NONE, MEND (mend, NONE))]
              of SOME (_, ast) =>
                   if mast_cheat' ast
@@ -4920,8 +4952,11 @@ val SIMP_LIKE = ["simp", "auto", "simp_all", "clarsimp"]
 val red_SIMP = linear_passm NONE (
   fn origin as (s00, MTACTIC (Method.Source (tok :: toks), using, _)) :: L =>
       if member (op =) SIMP_LIKE (Token.content_of tok)
-      then let
-           val ((w,wo), _) = simp_parser (toks @ [Token.eof])
+      then \<^try>\<open>let
+           val ((w,wo), _) =
+              case Token.content_of tok
+                of "auto" => auto_parser (toks @ [Token.eof])
+                 | _ => simp_parser (toks @ [Token.eof])
            val s0 = the s00
            val s1 = case L of H1 :: _ => SOME (the (fst H1))
                             | _ => NONE
@@ -4934,7 +4969,7 @@ val red_SIMP = linear_passm NONE (
          then (s00, mast) :: L
            |> chk
          else origin
-       end handle Minilang.OPR_FAIL _ => origin
+       end catch _ => origin\<close>
       else origin
    | L => L
 )
@@ -4977,7 +5012,7 @@ fun translate (s, toks) =
         are eliminated, leaving FIX, ASSUME, CASE, ISAR_OBTAIN, ISAR_CONSIDER,
                        DOT, TACTIC, DEFINE, LET, NOTATION, HAVE, OPEN_MODULE, NOTE, MPROOF,
                        BRANCH_SUBGOALS *)
-   |> validate ps "Validation Fail: separate_prf_pass" 
+   |> validate ps "Validation Fail: separate_prf_pass"
    |> (fn X => (warning (print_ast X); X))
   end
 
@@ -4987,21 +5022,27 @@ fun translate_m (s, toks) =
       val ps = ps
             |> Proof.map_context ( Config.put Printer.show_markup false
                                 #> Config.put Goal.quick_and_dirty true
-                                #> Config.put Minilang.enable_cache_by_step false)
+                                #> Config.put Minilang.enable_cache_by_step false
+                                #> Config.put Phi_Sledgehammer_Solver.sledgehammer_params "timeout = 20")
       val s0 = Minilang.INIT' ps
       val ctxt0 = Proof.context_of ps
+      val ret = Unsynchronized.ref []
    in Minilang.set_reporter item_reporter
     ; trans_to_minlang (translate (s, toks)) s0 |> fst
-   |> norm_Mtac                            (*preserves state*)
+   |> norm_Mtac                            (*destroys state*)
    |> validatem ctxt0 (Minilang.INIT' ps)
+   |> (fn X => ((
+      if mast_cheat' X then () else ret := ("raw", X) :: !ret
+      ); X))
    |> refinement                           (*preserves state*)
-   |> move_lemma                           (*destroys state*)
+(*   |> move_lemma                           (*destroys state*) *)
    |> validatem ctxt0 (Minilang.INIT' ps)
    |> red_SIMP                             
    |> (fn X =>
       if mast_cheat' X
       then raise Translation_Fail "Some proof obligation fails"
-      else (warning (print_mast true X); X))
+      else (warning (print_mast true X);
+            ("refined", X) :: !ret))
   end
 
 fun parse state src =

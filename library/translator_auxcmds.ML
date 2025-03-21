@@ -26,25 +26,28 @@ fun mqed s = s
 fun mproof s0 = let
        val s = Proof.refine_insert [] s0
        val {context = ctxt, goal = st, ...} = Proof.raw_goal s;
-       val bind = Thm.major_prem_of st |> try HOLogic.dest_Trueprop
+       val no_goal = Thm.no_prems st
+       val bind = if no_goal then SOME \<^prop>\<open>True\<close>
+                  else Thm.major_prem_of st |> try HOLogic.dest_Trueprop
 
        fun after_qed (ctxt'', [[result]]) =
           Proof.end_block #> (fn state' =>
             let val ctxt' = Proof.context_of state';
                 val result' = singleton (Proof_Context.export ctxt'' ctxt') result
              in state'
-             |> Proof.refine_primitive (fn _ => fn _ =>
+             |> not no_goal ? Proof.refine_primitive (fn _ => fn _ =>
                     Minilang.MP ctxt st result')
             end)
           #> Proof.reset_facts
           #> Proof.enter_backward
-
+       val goal = if no_goal then \<^prop>\<open>True\<close>
+                  else Thm.term_of (Thm.cprem_of st 1)
     in s
       |> Proof.enter_forward
       |> Proof.using_facts []
       |> Proof.begin_block
       |> Proof.internal_goal (K (K ())) (Proof_Context.mode_schematic) true "subgoal"
-          NONE after_qed [] [] [(Binding.empty_atts, [(Thm.term_of (Thm.cprem_of st 1), [])])] |> #2
+          NONE after_qed [] [] [(Binding.empty_atts, [(goal, [])])] |> #2
  
 (*
       |> Proof.refine_singleton (Method.Basic (fn _ => fn _ =>

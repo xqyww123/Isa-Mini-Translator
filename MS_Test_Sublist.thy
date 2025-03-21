@@ -8,7 +8,7 @@ section \<open>List prefixes, suffixes, and homeomorphic embedding\<close>
 
 theory MS_Test_Sublist
 imports Main MS_Translator
-begin
+begin 
 
 subsection \<open>Prefix order on lists\<close>
 
@@ -506,8 +506,20 @@ proof (induct rule: list_induct2', blast, force, force)
 qed
 
 lemma parallel_append: "a \<parallel> b \<Longrightarrow> a @ c \<parallel> b @ d"
- 
-   
+         
+  apply (min_script \<open>
+RULE parallelI
+  RULE parallelE
+  RULE conjE
+  INDUCT rule: not_prefix_induct
+    APPLY (simp)
+  NEXT
+    APPLY (simp)
+  NEXT
+    APPLY (simp)
+NEXT
+\<close>)
+    
 ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
 " apply (rule parallelI)\n\
 \    apply (erule parallelE, erule conjE,\n\
@@ -840,14 +852,40 @@ lemma last_suffixes [simp]: "last (suffixes xs) = xs"
 
 lemma suffixes_append: 
   "suffixes (xs @ ys) = suffixes ys @ map (\<lambda>xs'. xs' @ ys) (tl (suffixes xs))"
-proof (induction ys rule: rev_induct)
-  case Nil
-  thus ?case by (cases xs rule: rev_cases) auto
-next
-  case (snoc y ys)
-  show ?case
-    by (simp only: append.assoc [symmetric] suffixes_snoc snoc.IH) simp
-qed
+ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+"proof (induction ys rule: rev_induct)\n\
+\  case Nil\n\
+\  thus ?case by (cases xs rule: rev_cases) auto\n\
+\next\n\
+\  case (snoc y ys)\n\
+\  show ?case\n\
+\    by (simp only: append.assoc [symmetric] suffixes_snoc snoc.IH) simp\n\
+\qed"\<close>
+
+ apply ((induction ys rule: rev_induct)[1])
+(*2 subgoals*)
+mproof
+case Nil:  Nil
+show "?case"
+using Nil apply ((cases xs rule: rev_cases)[1])
+(*2 subgoals*)
+ apply ((auto)[1])
+(*NEXT*)
+ apply ((auto)[1])
+(*end 2 subgoals*)
+.
+mqed
+(*NEXT*)
+mproof
+case snoc:   (snoc y ys)
+show "?case"
+ apply ((simp only: append.assoc [symmetric] suffixes_snoc snoc.IH)[1])
+ apply ((simp)[1])
+.
+mqed
+(*end 2 subgoals*)
+.
+
 
 lemma suffixes_eq_snoc:
   "suffixes ys = xs @ [x] \<longleftrightarrow>

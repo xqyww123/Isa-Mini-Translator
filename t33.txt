@@ -1,0 +1,30 @@
+proof -
+  from dpos default have defz: "0 \<le> def" by auto
+  show ?thesis
+  proof (unfold_locales)
+    show "SN {(x,y). y \<ge> 0 \<and> delta_gt \<delta> x y}" by (rule delta_gt_SN[OF dpos])
+  next
+    fix x y z :: 'a
+    assume "delta_mono x" and yz: "delta_gt \<delta> y z"
+    hence x: "1 \<le> x" unfolding delta_mono_def by simp
+    have "\<exists> d > 0. delta_gt \<delta> = (\<lambda> x y. d \<le> x - y)" 
+      by (rule exI[of _ \<delta>], auto simp: dpos delta_gt_def)
+    from this obtain d where d: "0 < d" and rat: "delta_gt \<delta> = (\<lambda> x y. d \<le> x - y)" by auto
+    from yz have yzd: "d \<le> y - z" by (simp add: rat)
+    show "delta_gt \<delta> (x * y) (x * z)"
+    proof (simp only: rat)
+      let ?p = "(x - 1) * (y - z)"
+      from x have x1: "0 \<le> x - 1" by auto
+      from yzd d have yz0: "0 \<le> y - z" by auto
+      have "0 \<le> ?p" 
+        by (rule mult_nonneg_nonneg[OF x1 yz0])
+      have "x * y - x * z = x * (y - z)" using right_diff_distrib[of x y z] by auto
+      also have "\<dots> = ((x - 1) + 1) * (y - z)" by auto
+      also have "\<dots> = ?p + 1 * ( y - z)" by (rule ring_distribs(2))
+      also have "\<dots> = ?p + (y - z)" by simp
+      also have "\<dots> \<ge> (0 + d)" using yzd \<open>0 \<le> ?p\<close> by auto
+      finally 
+      show "d \<le> x * y - x * z" by auto
+    qed
+  qed (insert dpos, auto simp: delta_gt_def default defz)
+qed
