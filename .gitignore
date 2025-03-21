@@ -1,0 +1,17 @@
+# VIM
+*.ll
+*~
+*.swn
+*.swp
+*.swo
+.*.marks
+
+\#*
+output
+.*#
+*.proof-cache
+*.phi-cache
+
+result.csv
+.idea
+__pycache__/

@@ -1,0 +1,284 @@
+proof -
+  define H where "H \<equiv> \<lambda>(x, y). (x, f (x, y))"
+  define H' where "H' \<equiv> \<lambda>x. (embed1_blinfun o\<^sub>L fst_blinfun) + (embed2_blinfun o\<^sub>L (f' x))"
+  have f'_inv: "f' (x, y) o\<^sub>L embed2_blinfun \<in> invertibles_blinfun"
+    using T1 T2 by (auto simp: invertibles_blinfun_def ac_simps intro!: exI[where x=T])
+  from openE[OF blinfun_inverse_open this]
+  obtain d0 where e0: "0 < d0"
+    "ball (f' (x, y) o\<^sub>L embed2_blinfun) d0 \<subseteq> invertibles_blinfun"
+    by auto
+  have "isCont (\<lambda>s. f' s o\<^sub>L embed2_blinfun) (x, y)"
+    by (auto intro!: continuous_intros f'C)
+  from this[unfolded isCont_def, THEN tendstoD, OF \<open>0 < d0\<close>]
+  have "\<forall>\<^sub>F s in at (x, y). f' s o\<^sub>L embed2_blinfun \<in> invertibles_blinfun"
+    apply eventually_elim
+    using e0 by (auto simp: subset_iff dist_commute)
+  then obtain e0 where "e0 > 0"
+      "xa \<noteq> (x, y) \<Longrightarrow> dist xa (x, y) < e0 \<Longrightarrow>
+        f' xa o\<^sub>L embed2_blinfun \<in> invertibles_blinfun" for xa
+    unfolding eventually_at
+    by auto
+  then have e0: "e0 > 0"
+    "dist xa (x, y) < e0 \<Longrightarrow> f' xa o\<^sub>L embed2_blinfun \<in> invertibles_blinfun" for xa
+    apply -
+    subgoal by simp
+    using f'_inv
+    apply (cases "xa = (x, y)")
+    by auto
+
+  have H': "x \<in> S \<Longrightarrow> (H has_derivative H' x) (at x)" for x
+    unfolding H_def  H'_def
+    by (auto intro!: derivative_eq_intros ext simp: blinfun.bilinear_simps)
+  have cH': "isCont H' (x, y)"
+    unfolding H'_def
+    by (auto intro!: continuous_intros assms)
+  have linear_H': "\<And>s. s \<in> S \<Longrightarrow> linear (H' s)"
+    using H' assms(2) has_derivative_linear by blast
+  have *: "blinfun_apply T (blinfun_apply (f' (x, y)) (0, b)) = b" for b
+    using blinfun_inverseD[OF T2, of b]
+    by simp
+  have "inj (f' (x, y) o\<^sub>L embed2_blinfun)"
+    by (metis (no_types, lifting) "*" blinfun_apply_blinfun_compose embed2_blinfun.rep_eq injI)
+  then have [simp]: "blinfun_apply (f' (x, y)) (0, b) = 0 \<Longrightarrow> b = 0" for b
+    apply (subst (asm) linear_injective_0)
+    subgoal
+      apply (rule bounded_linear.linear)
+      apply (rule blinfun.bounded_linear_right)
+      done
+    subgoal by simp
+    done
+  have "inj (H' (x, y))"
+    apply (subst linear_injective_0)
+     apply (rule linear_H')
+     apply fact
+    apply (auto simp: H'_def blinfun.bilinear_simps zero_prod_def)
+    done
+  define Hi where "Hi = (embed1_blinfun o\<^sub>L fst_blinfun) + ((embed2_blinfun o\<^sub>L T o\<^sub>L (snd_blinfun - (f' (x, y) o\<^sub>L embed1_blinfun o\<^sub>L fst_blinfun))))"
+  have Hi': "(\<lambda>u. snd (blinfun_apply Hi (u, 0))) = - T o\<^sub>L f' (x, y) o\<^sub>L embed1_blinfun"
+    by (auto simp: Hi_def blinfun.bilinear_simps)
+  have Hi: "Hi o\<^sub>L H' (x, y) = 1\<^sub>L"
+    apply (auto simp: H'_def fun_eq_iff blinfun.bilinear_simps Hi_def
+        intro!: ext blinfun_eqI)
+    apply (subst blinfun_apply_Pair_split)
+    by (auto simp: * blinfun.bilinear_simps)
+  from has_derivative_locally_injective_blinfun[OF S this H' cH']
+  obtain r0 where r0: "0 < r0" "ball (x, y) r0 \<subseteq> S" and inj: "inj_on H (ball (x, y) r0)"
+    by auto
+  define r where "r = min r0 e0"
+  have r: "0 < r" "ball (x, y) r \<subseteq> S" and inj: "inj_on H (ball (x, y) r)"
+    and r_inv: "\<And>s. s \<in> ball (x, y) r \<Longrightarrow> f' s o\<^sub>L embed2_blinfun \<in> invertibles_blinfun"
+    subgoal using e0 r0 by (auto simp: r_def)
+    subgoal using e0 r0 by (auto simp: r_def)
+    subgoal using inj apply (rule inj_on_subset)
+      using e0 r0 by (auto simp: r_def)
+    subgoal for s
+      using e0 r0 by (auto simp: r_def dist_commute)
+    done
+  obtain i::'a where "i \<in> Basis"
+    using nonempty_Basis by blast
+  define undef where "undef \<equiv> (x, y) + r *\<^sub>R (i, 0)"\<comment> \<open>really??\<close>
+  have ud: "\<not> dist (x, y) undef < r"
+    using \<open>r > 0\<close> \<open>i \<in> Basis\<close> by (auto simp: undef_def dist_norm)
+  define G where "G \<equiv> the_inv_into (ball (x, y) r) H"
+  {
+    fix u v
+    assume [simp]: "(u, v) \<in> H ` ball (x, y) r"
+    note [simp] = inj
+    have "(u, v) = H (G (u, v))"
+      unfolding G_def
+      by (subst f_the_inv_into_f[where f=H]) auto
+    moreover have "\<dots> = H (G (u, v))"
+      by (auto simp: G_def)
+    moreover have "\<dots> = (fst (G (u, v)), f (G (u, v)))"
+      by (auto simp: H_def split_beta')
+    ultimately have "u = fst (G (u, v))" "v = f (G (u, v))" by simp_all
+    then have "f (u, snd (G(u, v))) = v" "u = fst (G (u, v))"
+      by (metis prod.collapse)+
+  } note uvs = this
+  note uv = uvs(1)
+  moreover
+  have "f (x, snd (G (x, 0))) = 0"
+    apply (rule uv)
+    by (metis (mono_tags, lifting) H_def assms(6) case_prod_beta' centre_in_ball fst_conv image_iff r(1) snd_conv)
+  moreover
+  have cH: "continuous_on S H"
+    apply (rule has_derivative_continuous_on)
+    apply (subst at_within_open)
+      apply (auto intro!: H' assms)
+    done
+  have inj2: "inj_on H (ball (x, y) (r / 2))"
+    apply (rule inj_on_subset, rule inj)
+    using r by auto
+  have oH: "open (H ` ball (x, y) (r/2))"
+    apply (rule invariance_of_domain_gen)
+       apply (auto simp: assms inj)
+    apply (rule continuous_on_subset)
+      apply fact
+    using r
+     apply auto
+    using inj2 apply simp
+    done
+  have "(x, f (x, y)) \<in> H ` ball (x, y) (r/2)"
+    using \<open>r > 0\<close> by (auto simp: H_def)
+  from open_contains_cball[THEN iffD1, OF oH, rule_format, OF this]
+  obtain e' where e': "e' > 0" "cball (x, f (x, y)) e' \<subseteq> H ` ball (x, y) (r/2)"
+    by auto
+
+  have inv_subset: "the_inv_into (ball (x, y) r) H a = the_inv_into R H a"
+    if "a \<in> H ` R" "R \<subseteq> (ball (x, y) r)"
+    for a R
+    apply (rule the_inv_into_f_eq[OF inj])
+     apply (rule f_the_inv_into_f)
+      apply (rule inj_on_subset[OF inj])
+      apply fact
+     apply fact
+    apply (rule the_inv_into_into)
+      apply (rule inj_on_subset[OF inj])
+      apply fact
+     apply fact
+    apply (rule order_trans)
+     apply fact
+    using r apply auto
+    done
+  have GH: "G (H z) = z" if "dist (x, y) z < r" for z
+    by (auto simp: G_def the_inv_into_f_f inj that)
+  define e where "e = min (e' / 2) e0"
+  define r2 where "r2 = r / 2"
+  have r2: "r2 > 0" "r2 < r"
+    using \<open>r > 0\<close> by (auto simp: r2_def)
+  have "e > 0" using e' e0 by (auto simp: e_def)
+  from cball_times_subset[of "x" e' "f (x, y)"] e'
+  have "cball x e \<times> cball (f (x, y)) e \<subseteq> H ` ball (x, y) (r/2)"
+    by (force simp: e_def)
+  then have e_r_subset: "z \<in> cball x e \<Longrightarrow> (z, 0) \<in> H ` ball (x, y) (r/2)" for z
+    using \<open>0 < e\<close> assms(6)
+    by (auto simp: H_def subset_iff)
+  have u0: "(u, 0) \<in> H ` ball (x, y) r" if "u \<in> cball x e" for u
+    apply (rule rev_subsetD)
+     apply (rule e_r_subset)
+     apply fact
+    unfolding r2_def using r2 by auto
+  have G_r: "G (u, 0) \<in> ball (x, y) r" if "u \<in> cball x e" for u
+    unfolding G_def
+    apply (rule the_inv_into_into)
+      apply fact
+     apply (auto)
+    apply (rule u0, fact)
+    done
+  note e_r_subset
+  ultimately have G2:
+    "f (x, snd (G (x, 0))) = 0" "snd (G (x, 0)) = y"
+    "\<And>u. u \<in> cball x e \<Longrightarrow> f (u, snd (G (u, 0))) = 0"
+    "continuous_on (cball x e) (\<lambda>u. snd (G (u, 0)))"
+    "(\<lambda>t. (t, snd (G (t, 0)))) ` cball x e \<subseteq> S"
+    "e > 0"
+    "((\<lambda>u. snd (G (u, 0))) has_derivative (\<lambda>u. snd (Hi (u, 0)))) (at x)"
+       apply (auto simp: G_def split_beta'
+        intro!: continuous_intros continuous_on_compose2[OF cH])
+    subgoal premises prems
+    proof -
+      have "the_inv_into (ball (x, y) r) H (x, 0) = (x, y)"
+        apply (rule the_inv_into_f_eq)
+          apply fact
+         by (auto simp: H_def assms \<open>r > 0\<close>)
+       then show ?thesis
+         by auto
+    qed
+    using r2(2) r2_def apply fastforce
+    apply (subst continuous_on_cong[OF refl])
+     apply (rule inv_subset[where R="cball (x, y) r2"])
+    subgoal
+      using r2
+      apply auto
+      using r2_def by force
+    subgoal using r2 by (force simp:)
+    subgoal
+      apply (rule continuous_on_compose2[OF continuous_on_inv_into])
+      using r(2) r2(2)
+        apply (auto simp: r2_def[symmetric]
+          intro!: continuous_on_compose2[OF cH] continuous_intros)
+       apply (rule inj_on_subset)
+        apply (rule inj)
+      using r(2) r2(2) apply force
+      apply force
+      done
+    subgoal premises prems for u
+    proof -
+      from prems have u: "u \<in> cball x e" by auto
+      note G_r[OF u]
+      also have "ball (x, y) r \<subseteq> S"
+        using r by simp
+      finally have "(G (u, 0)) \<in> S" .
+      then show ?thesis
+        unfolding G_def[symmetric]
+        using uvs(2)[OF u0, OF u]
+        by (metis prod.collapse)
+    qed
+    subgoal using \<open>e > 0\<close> by simp
+    subgoal premises prems
+    proof -
+      have "(x, y) \<in> cball (x, y) r2"
+        using r2
+        by auto
+      moreover
+      have "H (x, y) \<in> interior (H ` cball (x, y) r2)"
+        apply (rule interiorI[OF oH])
+        using r2 by (auto simp: r2_def)
+      moreover
+      have "cball (x, y) r2 \<subseteq> S"
+        using r r2 by auto
+      moreover have "\<And>z. z \<in> cball (x, y) r2 \<Longrightarrow> G (H z) = z"
+        using r2 by (auto intro!: GH)
+      ultimately have "(G has_derivative Hi) (at (H (x, y)))"
+      proof (rule has_derivative_inverse[where g = G and f = H,
+              OF compact_cball _ _ continuous_on_subset[OF cH] _ H' _ _])
+        show "blinfun_apply Hi \<circ> blinfun_apply (H' (x, y)) = id"
+          using Hi by transfer auto
+      qed (use S blinfun.bounded_linear_right in auto)
+      then have g': "(G has_derivative Hi) (at (x, 0))"
+        by (auto simp: H_def assms)
+      show ?thesis
+        unfolding G_def[symmetric] H_def[symmetric]
+        apply (auto intro!: derivative_eq_intros)
+         apply (rule has_derivative_compose[where g=G and f="\<lambda>x. (x, 0)"])
+         apply (auto intro!: g' derivative_eq_intros)
+        done
+    qed
+    done
+  moreover
+  note \<open>r > 0\<close>
+  moreover
+  define u where "u \<equiv> \<lambda>x. snd (G (x, 0))"
+  have local_unique: "u s = v s"
+    if solves: "(\<And>s. s \<in> U \<Longrightarrow> f (s, v s) = 0)"
+    and i: "v x = y"
+    and v: "continuous_on U v"
+    and s: "s \<in> U"
+    and s': "(s, v s) \<in> ball (x, y) r"
+    and U: "U \<subseteq> cball x e"
+    for U v s
+  proof -
+    have H_eq: "H (s, v s) = H (s, u s)"
+      apply (auto simp: H_def solves[OF s])
+      unfolding u_def
+      apply (rule G2)
+      apply (rule subsetD; fact)
+      done
+    have "(s, snd (G (s, 0))) = (G (s, 0))"
+      using GH H_def s s' solves by fastforce
+    also have "\<dots> \<in> ball (x, y) r"
+      unfolding G_def
+      apply (rule the_inv_into_into)
+        apply fact
+       apply (rule u0)
+       apply (rule subsetD; fact)
+      apply (rule order_refl)
+      done
+    finally have "(s, u s) \<in> ball (x, y) r" unfolding u_def .
+    from inj_onD[OF inj H_eq s' this]
+    show "u s = v s"
+      by auto
+  qed
+  ultimately show ?thesis
+    unfolding u_def Hi' ..
+qed

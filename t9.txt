@@ -1,0 +1,30 @@
+  apply (rule returns_toI[of "return_time P x - t"])
+  subgoal using flow_not by (auto intro!: return_time_gt ret)
+  subgoal by (auto intro!: existence_ivl_trans' return_time_exivl ret t)
+  subgoal by (subst flow_trans[symmetric])
+      (auto intro!: existence_ivl_trans' return_time_exivl ret t return_time_returns)
+  subgoal
+  proof -
+    have "\<forall>\<^sub>F y in nhds 0. y \<in> existence_ivl0 (flow0 x t)"
+      apply (rule eventually_nhds_in_open[OF open_existence_ivl[of "flow0 x t"] existence_ivl_zero])
+      apply (rule flow_in_domain)
+      apply fact
+      done
+    then have "\<forall>\<^sub>F s in at_right 0. s \<in> existence_ivl0 (flow0 x t)"
+      unfolding eventually_at_filter
+      by eventually_elim auto
+    moreover
+    have "\<forall>\<^sub>F s in at_right 0. t + s < return_time P x"
+      using return_time_gt[OF ret flow_not, of t]
+      by (auto simp: eventually_at_right[OF zero_less_one] intro!: exI[of _ "return_time P x - t"])
+    moreover
+    have "\<forall>\<^sub>F s in at_right 0. 0 < t + s"
+      by (metis (mono_tags) eventually_at_rightI greaterThanLessThan_iff pos_add_strict t(1))
+    ultimately show ?thesis
+      apply eventually_elim
+      apply (subst flow_trans[symmetric])
+      using return_time_least[OF ret]
+      by (auto intro!: existence_ivl_trans' t)
+    qed
+  subgoal by fact
+  done

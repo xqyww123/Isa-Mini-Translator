@@ -1,0 +1,513 @@
+proof -
+  assume Nv1_inter_E2_empty: "N\<^bsub>\<V>1\<^esub> \<inter> E\<^bsub>ES2\<^esub> = {}"
+    and Nv2_inter_E1_empty: "N\<^bsub>\<V>2\<^esub> \<inter> E\<^bsub>ES1\<^esub> = {}"
+
+  {
+    fix \<tau> lambda t1 t2
+    assume \<tau>_in_Estar: "set \<tau> \<subseteq> E\<^bsub>(ES1 \<parallel> ES2)\<^esub>"
+      and lambda_in_Vvstar: "set lambda \<subseteq> V\<^bsub>\<V>\<^esub>"
+      and t1_in_E1star: "set t1 \<subseteq> E\<^bsub>ES1\<^esub>"
+      and t2_in_E2star: "set t2 \<subseteq> E\<^bsub>ES2\<^esub>"
+      and \<tau>_E1_t1_in_Tr1: "((\<tau> \<upharpoonleft> E\<^bsub>ES1\<^esub>) @ t1) \<in> Tr\<^bsub>ES1\<^esub>"
+      and \<tau>_E2_t2_in_Tr2: "((\<tau> \<upharpoonleft> E\<^bsub>ES2\<^esub>) @ t2) \<in> Tr\<^bsub>ES2\<^esub>"
+      and lambda_E1_is_t1_Vv: "(lambda \<upharpoonleft> E\<^bsub>ES1\<^esub>) = (t1 \<upharpoonleft> V\<^bsub>\<V>\<^esub>)"
+      and lambda_E2_is_t2_Vv: "(lambda \<upharpoonleft> E\<^bsub>ES2\<^esub>) = (t2 \<upharpoonleft> V\<^bsub>\<V>\<^esub>)"
+      and t1_no_Cv1: "(t1 \<upharpoonleft> C\<^bsub>\<V>1\<^esub>) = []"
+      and t2_no_Cv2: "(t2 \<upharpoonleft> C\<^bsub>\<V>2\<^esub>) = []"
+   
+     have "\<lbrakk> set \<tau> \<subseteq> E\<^bsub>(ES1 \<parallel> ES2)\<^esub>;
+      set lambda \<subseteq> V\<^bsub>\<V>\<^esub>; 
+      set t1 \<subseteq> E\<^bsub>ES1\<^esub>;
+      set t2 \<subseteq> E\<^bsub>ES2\<^esub>;
+      ((\<tau> \<upharpoonleft> E\<^bsub>ES1\<^esub>) @ t1) \<in> Tr\<^bsub>ES1\<^esub>;
+      ((\<tau> \<upharpoonleft> E\<^bsub>ES2\<^esub>) @ t2) \<in> Tr\<^bsub>ES2\<^esub>;
+      (lambda \<upharpoonleft> E\<^bsub>ES1\<^esub>) = (t1 \<upharpoonleft> V\<^bsub>\<V>\<^esub>);
+      (lambda \<upharpoonleft> E\<^bsub>ES2\<^esub>) = (t2 \<upharpoonleft> V\<^bsub>\<V>\<^esub>);
+      (t1 \<upharpoonleft> C\<^bsub>\<V>1\<^esub>) = [];
+      (t2 \<upharpoonleft> C\<^bsub>\<V>2\<^esub>) = [] \<rbrakk>  
+      \<Longrightarrow> (\<exists> t. ((\<tau> @ t) \<in> Tr\<^bsub>(ES1 \<parallel> ES2)\<^esub> \<and> (t \<upharpoonleft> V\<^bsub>\<V>\<^esub>) = lambda \<and> (t \<upharpoonleft> C\<^bsub>\<V>\<^esub>) = []))"
+      proof (induct lambda arbitrary: \<tau> t1 t2)
+        case (Nil \<tau> t1 t2)
+        
+        have "(\<tau> @ []) \<in> Tr\<^bsub>(ES1 \<parallel> ES2)\<^esub>"
+          proof -
+            have "\<tau> \<in> Tr\<^bsub>(ES1 \<parallel> ES2)\<^esub>"
+              proof -
+                from Nil(5) validES1 have "\<tau> \<upharpoonleft> E\<^bsub>ES1\<^esub> \<in> Tr\<^bsub>ES1\<^esub>"
+                  by (simp add: ES_valid_def traces_prefixclosed_def 
+                    prefixclosed_def prefix_def)
+                moreover
+                from Nil(6) validES2 have "\<tau> \<upharpoonleft> E\<^bsub>ES2\<^esub> \<in> Tr\<^bsub>ES2\<^esub>"
+                  by (simp add: ES_valid_def traces_prefixclosed_def
+                    prefixclosed_def prefix_def)
+                moreover 
+                note Nil(1)
+                ultimately show ?thesis
+                  by (simp add: composeES_def)
+              qed
+            thus ?thesis
+              by auto
+          qed
+        moreover
+        have "([] \<upharpoonleft> V\<^bsub>\<V>\<^esub>) = []"
+          by (simp add: projection_def)
+        moreover
+        have "([] \<upharpoonleft> C\<^bsub>\<V>\<^esub>) = []"
+          by (simp add: projection_def)
+        ultimately show ?case
+          by blast
+      next
+        case (Cons \<V>' lambda' \<tau> t1 t2) 
+        thus ?case
+          proof -
+            from Cons(3) have v'_in_Vv: "\<V>' \<in> V\<^bsub>\<V>\<^esub>"
+              by auto
+
+            have "\<V>' \<in> V\<^bsub>\<V>1\<^esub> \<inter> V\<^bsub>\<V>2\<^esub> 
+              \<or> \<V>' \<in> V\<^bsub>\<V>1\<^esub> - E\<^bsub>ES2\<^esub>
+              \<or> \<V>' \<in> V\<^bsub>\<V>2\<^esub> - E\<^bsub>ES1\<^esub>"  
+              using Vv_is_Vv1_union_Vv2 v'_in_Vv  propSepViews
+              unfolding properSeparationOfViews_def 
+              by fastforce
+            moreover {
+              assume v'_in_Vv1_inter_Vv2: "\<V>' \<in> V\<^bsub>\<V>1\<^esub> \<inter> V\<^bsub>\<V>2\<^esub>"
+              hence v'_in_Vv1: "\<V>' \<in> V\<^bsub>\<V>1\<^esub>" and v'_in_Vv2: "\<V>' \<in> V\<^bsub>\<V>2\<^esub>" 
+                by auto
+              with v'_in_Vv propSepViews 
+              have v'_in_E1: "\<V>' \<in> E\<^bsub>ES1\<^esub>" and v'_in_E2: "\<V>' \<in> E\<^bsub>ES2\<^esub>"
+                unfolding properSeparationOfViews_def by auto
+          
+              (* split t1, t2 w. r. t. \<V>' *)
+              from Cons(2,4,8) v'_in_E1 have "t1 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = \<V>' # (lambda' \<upharpoonleft> E\<^bsub>ES1\<^esub>)"
+                by (simp add: projection_def)
+              from projection_split_first[OF this] obtain r1 s1 
+                where t1_is_r1_v'_s1: "t1 = r1 @ [\<V>'] @ s1"
+                and r1_Vv_empty: "r1 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = []"
+                by auto
+              with Vv_is_Vv1_union_Vv2 projection_on_subset[of "V\<^bsub>\<V>1\<^esub>" "V\<^bsub>\<V>\<^esub>" "r1"]
+              have r1_Vv1_empty: "r1 \<upharpoonleft> V\<^bsub>\<V>1\<^esub> = []"
+                by auto
+
+              from Cons(3,5,9) v'_in_E2 have "t2 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = \<V>' # (lambda' \<upharpoonleft> E\<^bsub>ES2\<^esub>)"
+                by (simp add: projection_def)
+              from projection_split_first[OF this] obtain r2 s2 
+                where t2_is_r2_v'_s2: "t2 = r2 @ [\<V>'] @ s2"
+                and r2_Vv_empty: "r2 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = []"
+                by auto
+              with Vv_is_Vv1_union_Vv2 projection_on_subset[of "V\<^bsub>\<V>2\<^esub>" "V\<^bsub>\<V>\<^esub>" "r2"]
+              have r2_Vv2_empty: "r2 \<upharpoonleft> V\<^bsub>\<V>2\<^esub> = []"
+                by auto
+
+              (* properties of r1, s1 *)
+              from t1_is_r1_v'_s1 Cons(10) have r1_Cv1_empty: "r1 \<upharpoonleft> C\<^bsub>\<V>1\<^esub> = []"
+                by (simp add: projection_concatenation_commute)
+
+              from t1_is_r1_v'_s1 Cons(10) have s1_Cv1_empty: "s1 \<upharpoonleft> C\<^bsub>\<V>1\<^esub> = []"
+                by (simp only: projection_concatenation_commute, auto)
+
+              from Cons(4) t1_is_r1_v'_s1 have r1_in_E1star: "set r1 \<subseteq> E\<^bsub>ES1\<^esub>" 
+                and s1_in_E1star: "set s1 \<subseteq> E\<^bsub>ES1\<^esub>"
+                by auto
+
+              from Cons(6) t1_is_r1_v'_s1 
+              have \<tau>E1_r1_v'_s1_in_Tr1: "\<tau> \<upharpoonleft> E\<^bsub>ES1\<^esub> @ r1 @ [\<V>'] @ s1 \<in> Tr\<^bsub>ES1\<^esub>"
+                by simp
+
+              have r1_in_Nv1star: "set r1 \<subseteq> N\<^bsub>\<V>1\<^esub>"
+                proof -
+                  note r1_in_E1star
+                  moreover
+                  from r1_Vv1_empty have "set r1 \<inter> V\<^bsub>\<V>1\<^esub> = {}"
+                    by (metis Compl_Diff_eq Diff_cancel Diff_eq Int_commute 
+                      Int_empty_right disjoint_eq_subset_Compl 
+                      list_subset_iff_projection_neutral projection_on_union)
+                  moreover
+                  from r1_Cv1_empty have "set r1 \<inter> C\<^bsub>\<V>1\<^esub> = {}"
+                    by (metis Compl_Diff_eq Diff_cancel Diff_eq  Int_commute 
+                      Int_empty_right disjoint_eq_subset_Compl 
+                      list_subset_iff_projection_neutral projection_on_union)
+                  moreover
+                  note validV1
+                  ultimately show ?thesis
+                    by (simp add: isViewOn_def V_valid_def VN_disjoint_def NC_disjoint_def, auto)
+                qed
+              with Nv1_inter_E2_empty have r1E2_empty: "r1 \<upharpoonleft> E\<^bsub>ES2\<^esub> = []"
+                by (metis Int_commute empty_subsetI projection_on_subset2 r1_Vv_empty)                
+
+              (* properties of r2, s2 *)
+              from t2_is_r2_v'_s2 Cons(11) have r2_Cv2_empty: "r2 \<upharpoonleft> C\<^bsub>\<V>2\<^esub> = []"
+                by (simp add: projection_concatenation_commute)
+
+              from t2_is_r2_v'_s2 Cons(11) have s2_Cv2_empty: "s2 \<upharpoonleft> C\<^bsub>\<V>2\<^esub> = []"
+                by (simp only: projection_concatenation_commute, auto)
+
+              from Cons(5) t2_is_r2_v'_s2 have r2_in_E2star: "set r2 \<subseteq> E\<^bsub>ES2\<^esub>" 
+                and s2_in_E2star: "set s2 \<subseteq> E\<^bsub>ES2\<^esub>"
+                by auto
+
+              from Cons(7) t2_is_r2_v'_s2 
+              have \<tau>E2_r2_v'_s2_in_Tr2: "\<tau> \<upharpoonleft> E\<^bsub>ES2\<^esub> @ r2 @ [\<V>'] @ s2 \<in> Tr\<^bsub>ES2\<^esub>"
+                by simp
+
+              have r2_in_Nv2star: "set r2 \<subseteq> N\<^bsub>\<V>2\<^esub>"
+                proof -
+                  note r2_in_E2star
+                  moreover
+                  from r2_Vv2_empty have "set r2 \<inter> V\<^bsub>\<V>2\<^esub> = {}"
+                    by (metis Compl_Diff_eq Diff_cancel Un_upper2 
+                      disjoint_eq_subset_Compl list_subset_iff_projection_neutral 
+                      projection_on_union)
+                  moreover
+                  from r2_Cv2_empty have "set r2 \<inter> C\<^bsub>\<V>2\<^esub> = {}"
+                    by (metis Compl_Diff_eq Diff_cancel Un_upper2 
+                      disjoint_eq_subset_Compl list_subset_iff_projection_neutral 
+                      projection_on_union)
+                  moreover
+                  note validV2
+                  ultimately show ?thesis
+                    by (simp add: isViewOn_def V_valid_def VN_disjoint_def NC_disjoint_def, auto)
+                qed
+              with Nv2_inter_E1_empty have r2E1_empty: "r2 \<upharpoonleft> E\<^bsub>ES1\<^esub> = []"
+                by (metis Int_commute empty_subsetI projection_on_subset2 r2_Vv_empty)          
+                            
+              (* apply inductive hypothesis to lambda' s1 s2 *)
+              let ?tau = "\<tau> @ r1 @ r2 @ [\<V>']"
+
+              from Cons(2) r1_in_E1star r2_in_E2star v'_in_E2 
+              have "set ?tau \<subseteq> (E\<^bsub>(ES1 \<parallel> ES2)\<^esub>)"
+                by (simp add: composeES_def, auto)
+              moreover
+              from Cons(3) have "set lambda' \<subseteq> V\<^bsub>\<V>\<^esub>"
+                by auto
+              moreover
+              note s1_in_E1star s2_in_E2star
+              moreover
+              from Cons(6) r1_in_E1star r2E1_empty v'_in_E1 t1_is_r1_v'_s1 
+              have "((?tau \<upharpoonleft> E\<^bsub>ES1\<^esub>) @ s1) \<in> Tr\<^bsub>ES1\<^esub>"
+                by (simp only: projection_concatenation_commute 
+                  list_subset_iff_projection_neutral projection_def, auto)
+              moreover
+              from Cons(7) r2_in_E2star r1E2_empty v'_in_E2 t2_is_r2_v'_s2 
+              have "((?tau \<upharpoonleft> E\<^bsub>ES2\<^esub>) @ s2) \<in> Tr\<^bsub>ES2\<^esub>"
+                by (simp only: projection_concatenation_commute 
+                  list_subset_iff_projection_neutral projection_def, auto)
+              moreover
+              have "lambda' \<upharpoonleft> E\<^bsub>ES1\<^esub> = s1 \<upharpoonleft> V\<^bsub>\<V>\<^esub>"
+                proof -
+                  from Cons(2,4,8) v'_in_E1 have "t1 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = [\<V>'] @ (lambda' \<upharpoonleft> E\<^bsub>ES1\<^esub>)"
+                    by (simp add: projection_def)
+                  moreover
+                  from t1_is_r1_v'_s1 r1_Vv_empty v'_in_Vv1 Vv_is_Vv1_union_Vv2 
+                  have "t1 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = [\<V>'] @ (s1 \<upharpoonleft> V\<^bsub>\<V>\<^esub>)"
+                    by (simp only: t1_is_r1_v'_s1 projection_concatenation_commute 
+                      projection_def, auto)
+                  ultimately show ?thesis
+                    by auto
+                qed
+              moreover
+              have "lambda' \<upharpoonleft> E\<^bsub>ES2\<^esub> = s2 \<upharpoonleft> V\<^bsub>\<V>\<^esub>"
+                proof -
+                  from Cons(3,5,9) v'_in_E2 have "t2 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = [\<V>'] @ (lambda' \<upharpoonleft> E\<^bsub>ES2\<^esub>)"
+                    by (simp add: projection_def)
+                  moreover
+                  from t2_is_r2_v'_s2 r2_Vv_empty v'_in_Vv2 Vv_is_Vv1_union_Vv2 
+                  have "t2 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = [\<V>'] @ (s2 \<upharpoonleft> V\<^bsub>\<V>\<^esub>)"
+                    by (simp only: t2_is_r2_v'_s2 projection_concatenation_commute 
+                      projection_def, auto)
+                  ultimately show ?thesis
+                    by auto
+                qed
+              moreover
+              note s1_Cv1_empty s2_Cv2_empty Cons.hyps(1)[of ?tau s1 s2]
+              ultimately obtain t'
+                where tau_t'_in_Tr: "?tau @ t' \<in> Tr\<^bsub>(ES1 \<parallel> ES2)\<^esub>"
+                and t'Vv_is_lambda': "t' \<upharpoonleft> V\<^bsub>\<V>\<^esub> = lambda'"
+                and t'Cv_empty: "t' \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"
+                by auto
+
+              let ?t = "r1 @ r2 @ [\<V>'] @ t'"
+
+              (* conclude that ?t is a suitable choice *)              
+              note tau_t'_in_Tr
+              moreover
+              from r1_Vv_empty r2_Vv_empty t'Vv_is_lambda' v'_in_Vv 
+              have "?t \<upharpoonleft> V\<^bsub>\<V>\<^esub> = \<V>' # lambda'"
+                by (simp add: projection_def)
+              moreover
+              have "?t \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"
+              proof -
+                from propSepViews have "C\<^bsub>\<V>\<^esub> \<inter> E\<^bsub>ES1\<^esub> \<subseteq> C\<^bsub>\<V>1\<^esub>"
+                  unfolding properSeparationOfViews_def by auto
+                hence "r1 \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"                 
+                    by (metis  projection_on_subset2  r1_Cv1_empty r1_in_E1star)
+                  moreover
+                from propSepViews have "C\<^bsub>\<V>\<^esub> \<inter> E\<^bsub>ES2\<^esub> \<subseteq> C\<^bsub>\<V>2\<^esub>"
+                  unfolding properSeparationOfViews_def by auto
+                hence "r2 \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"
+                    by (metis  projection_on_subset2 r2_Cv2_empty r2_in_E2star)
+                  moreover
+                  note v'_in_Vv VIsViewOnE t'Cv_empty 
+                  ultimately show ?thesis
+                    by (simp add: isViewOn_def V_valid_def VC_disjoint_def projection_def, auto)
+                qed
+              ultimately have ?thesis 
+                by auto
+            }
+            moreover {
+              assume v'_in_Vv1_minus_E2: "\<V>' \<in> V\<^bsub>\<V>1\<^esub> - E\<^bsub>ES2\<^esub>"
+              hence v'_in_Vv1: "\<V>' \<in> V\<^bsub>\<V>1\<^esub>"
+                by auto
+              with v'_in_Vv propSepViews have v'_in_E1: "\<V>' \<in> E\<^bsub>ES1\<^esub>"
+                unfolding properSeparationOfViews_def
+                by auto
+
+              from v'_in_Vv1_minus_E2 have v'_notin_E2: "\<V>' \<notin> E\<^bsub>ES2\<^esub>"
+                by (auto)
+              with validV2 have v'_notin_Vv2: "\<V>' \<notin> V\<^bsub>\<V>2\<^esub>"
+                by (simp add: isViewOn_def V_valid_def, auto)
+
+               (* split t1 w.r.t. \<V>' *)
+              from Cons(3) Cons(4) Cons(8) v'_in_E1 have "t1 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = \<V>' # (lambda' \<upharpoonleft> E\<^bsub>ES1\<^esub>)"
+                by (simp add: projection_def)
+              from projection_split_first[OF this] obtain r1 s1 
+                where t1_is_r1_v'_s1: "t1 = r1 @ [\<V>'] @ s1"
+                and r1_Vv_empty: "r1 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = []"
+                by auto
+              with Vv_is_Vv1_union_Vv2 projection_on_subset[of "V\<^bsub>\<V>1\<^esub>" "V\<^bsub>\<V>\<^esub>" "r1"]
+              have r1_Vv1_empty: "r1 \<upharpoonleft> V\<^bsub>\<V>1\<^esub> = []"
+                by auto
+              
+              (* properties of r1 s1 *)
+              from t1_is_r1_v'_s1 Cons(10) have r1_Cv1_empty: "r1 \<upharpoonleft> C\<^bsub>\<V>1\<^esub> = []"
+                by (simp add: projection_concatenation_commute)
+
+              from t1_is_r1_v'_s1 Cons(10) have s1_Cv1_empty: "s1 \<upharpoonleft> C\<^bsub>\<V>1\<^esub> = []"
+                by (simp only: projection_concatenation_commute, auto)
+
+              from Cons(4) t1_is_r1_v'_s1 have r1_in_E1star: "set r1 \<subseteq> E\<^bsub>ES1\<^esub>"
+                by auto
+
+              have r1_in_Nv1star: "set r1 \<subseteq> N\<^bsub>\<V>1\<^esub>"
+              proof -
+                note r1_in_E1star
+                moreover
+                from r1_Vv1_empty have "set r1 \<inter> V\<^bsub>\<V>1\<^esub> = {}"
+                  by (metis Compl_Diff_eq Diff_cancel Diff_eq  Int_commute 
+                    Int_empty_right disjoint_eq_subset_Compl 
+                    list_subset_iff_projection_neutral projection_on_union)
+                moreover
+                from r1_Cv1_empty have "set r1 \<inter> C\<^bsub>\<V>1\<^esub> = {}"
+                  by (metis Compl_Diff_eq Diff_cancel Diff_eq  Int_commute 
+                    Int_empty_right disjoint_eq_subset_Compl 
+                    list_subset_iff_projection_neutral projection_on_union)
+                moreover
+                note validV1
+                ultimately show ?thesis
+                  by (simp add: isViewOn_def V_valid_def VN_disjoint_def NC_disjoint_def, auto)
+              qed
+              with Nv1_inter_E2_empty have r1E2_empty: "r1 \<upharpoonleft> E\<^bsub>ES2\<^esub> = []"               
+                by (metis Int_commute empty_subsetI 
+                  projection_on_subset2 r1_Vv1_empty)
+             
+              (* apply inductive hypothesis to lambda' r1 t2 *)
+              let ?tau = "\<tau> @ r1 @ [\<V>']"
+              
+              from v'_in_E1 Cons(2) r1_in_Nv1star validV1 
+              have "set ?tau \<subseteq> E\<^bsub>(ES1 \<parallel> ES2)\<^esub>"
+                by (simp only: isViewOn_def composeES_def V_valid_def, auto)
+              moreover
+              from Cons(3) have "set lambda' \<subseteq> V\<^bsub>\<V>\<^esub>"
+                by auto
+              moreover
+              from Cons(4) t1_is_r1_v'_s1 have "set s1 \<subseteq> E\<^bsub>ES1\<^esub>"
+                by auto
+              moreover
+              note Cons(5)
+              moreover
+              have "?tau \<upharpoonleft> E\<^bsub>ES1\<^esub> @ s1 \<in> Tr\<^bsub>ES1\<^esub>"
+                by (metis Cons_eq_appendI append_eq_appendI calculation(3) eq_Nil_appendI 
+                  list_subset_iff_projection_neutral Cons.prems(3) Cons.prems(5) 
+                  projection_concatenation_commute t1_is_r1_v'_s1)
+              moreover
+              have "?tau \<upharpoonleft> E\<^bsub>ES2\<^esub> @ t2 \<in> Tr\<^bsub>ES2\<^esub>"
+                proof -
+                  from v'_notin_E2 have "[\<V>'] \<upharpoonleft> E\<^bsub>ES2\<^esub> = []"
+                    by (simp add: projection_def)
+                  with Cons(7) Cons(4) t1_is_r1_v'_s1 v'_notin_E2 
+                    r1_in_Nv1star Nv1_inter_E2_empty r1E2_empty
+                    show ?thesis
+                      by (simp only: t1_is_r1_v'_s1 list_subset_iff_projection_neutral 
+                        projection_concatenation_commute, auto)
+                qed
+              moreover
+              from Cons(8) t1_is_r1_v'_s1 r1_Vv_empty v'_in_E1 v'_in_Vv have "lambda' \<upharpoonleft> E\<^bsub>ES1\<^esub> = s1 \<upharpoonleft> V\<^bsub>\<V>\<^esub>"
+                by (simp add: projection_def)
+              moreover
+              from Cons(9) v'_notin_E2 have "lambda' \<upharpoonleft> E\<^bsub>ES2\<^esub> = t2 \<upharpoonleft> V\<^bsub>\<V>\<^esub>"         
+                by (simp add: projection_def)
+              moreover
+              note s1_Cv1_empty Cons(11)
+              moreover
+              note Cons.hyps(1)[of ?tau s1 t2]
+              ultimately obtain t'
+                where tau_t'_in_Tr: "?tau @ t' \<in> Tr\<^bsub>(ES1 \<parallel> ES2)\<^esub>"
+                and t'_Vv_is_lambda': "t' \<upharpoonleft> V\<^bsub>\<V>\<^esub> = lambda'"
+                and t'_Cv_empty: "t' \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"
+                by auto
+
+              let ?t = "r1 @ [\<V>'] @ t'"
+
+              (* conclude that ?t is a suitable choice *)      
+              note tau_t'_in_Tr
+              moreover
+              from r1_Vv_empty t'_Vv_is_lambda' v'_in_Vv 
+              have "?t \<upharpoonleft> V\<^bsub>\<V>\<^esub> = \<V>' # lambda'"
+                by (simp add: projection_def)
+              moreover
+              have "?t \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"
+              proof -
+                from propSepViews have "C\<^bsub>\<V>\<^esub> \<inter> E\<^bsub>ES1\<^esub> \<subseteq> C\<^bsub>\<V>1\<^esub>"
+                  unfolding properSeparationOfViews_def by auto
+                hence"r1 \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"                 
+                  by (metis projection_on_subset2 r1_Cv1_empty r1_in_E1star)
+                with v'_in_Vv VIsViewOnE t'_Cv_empty show ?thesis
+                  by (simp add: isViewOn_def V_valid_def VC_disjoint_def projection_def, auto)
+              qed
+              ultimately have ?thesis
+                by auto
+            }
+            moreover {
+              assume v'_in_Vv2_minus_E1: "\<V>' \<in> V\<^bsub>\<V>2\<^esub> - E\<^bsub>ES1\<^esub>"
+              hence v'_in_Vv2: "\<V>' \<in> V\<^bsub>\<V>2\<^esub>"
+                by auto
+              with v'_in_Vv propSepViews 
+              have v'_in_E2: "\<V>' \<in> E\<^bsub>ES2\<^esub>"
+                unfolding properSeparationOfViews_def by auto
+
+              from v'_in_Vv2_minus_E1 
+              have v'_notin_E1: "\<V>' \<notin> E\<^bsub>ES1\<^esub>"
+                by (auto)
+              with validV1 
+              have v'_notin_Vv1: "\<V>' \<notin> V\<^bsub>\<V>1\<^esub>"
+                by (simp add:isViewOn_def V_valid_def, auto)
+
+               (* split t2 w.r.t. \<V>' *)
+              from Cons(4) Cons(5) Cons(9) v'_in_E2 
+              have "t2 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = \<V>' # (lambda' \<upharpoonleft> E\<^bsub>ES2\<^esub>)"
+                by (simp add: projection_def)
+              from projection_split_first[OF this] obtain r2 s2 
+                where t2_is_r2_v'_s2: "t2 = r2 @ [\<V>'] @ s2"
+                and r2_Vv_empty: "r2 \<upharpoonleft> V\<^bsub>\<V>\<^esub> = []"
+                by auto
+              with Vv_is_Vv1_union_Vv2 projection_on_subset[of "V\<^bsub>\<V>2\<^esub>" "V\<^bsub>\<V>\<^esub>" "r2"]
+              have r2_Vv2_empty: "r2 \<upharpoonleft> V\<^bsub>\<V>2\<^esub> = []"
+                by auto
+              
+              (* properties of r2 s2 *)
+              from t2_is_r2_v'_s2 Cons(11) have r2_Cv2_empty: "r2 \<upharpoonleft> C\<^bsub>\<V>2\<^esub> = []"
+                by (simp add: projection_concatenation_commute)
+
+              from t2_is_r2_v'_s2 Cons(11) have s2_Cv2_empty: "s2 \<upharpoonleft> C\<^bsub>\<V>2\<^esub> = []"
+                by (simp only: projection_concatenation_commute, auto)
+
+              from Cons(5) t2_is_r2_v'_s2 have r2_in_E2star: "set r2 \<subseteq> E\<^bsub>ES2\<^esub>"
+                by auto
+
+              have r2_in_Nv2star: "set r2 \<subseteq> N\<^bsub>\<V>2\<^esub>"
+              proof -
+                note r2_in_E2star
+                moreover
+                from r2_Vv2_empty have "set r2 \<inter> V\<^bsub>\<V>2\<^esub> = {}"
+                  by (metis Compl_Diff_eq Diff_cancel Un_upper2 
+                    disjoint_eq_subset_Compl 
+                    list_subset_iff_projection_neutral projection_on_union)
+                moreover
+                from r2_Cv2_empty have "set r2 \<inter> C\<^bsub>\<V>2\<^esub> = {}"
+                  by (metis Compl_Diff_eq Diff_cancel Un_upper2 
+                    disjoint_eq_subset_Compl 
+                    list_subset_iff_projection_neutral projection_on_union)
+                moreover
+                note validV2
+                ultimately show ?thesis
+                  by (simp add: isViewOn_def V_valid_def VN_disjoint_def NC_disjoint_def, auto)
+              qed
+              with Nv2_inter_E1_empty have r2E1_empty: "r2 \<upharpoonleft> E\<^bsub>ES1\<^esub> = []"               
+                by (metis Int_commute empty_subsetI 
+                  projection_on_subset2 r2_Vv2_empty)
+             
+              (* apply inductive hypothesis to lambda' t1 r2 *)
+              let ?tau = "\<tau> @ r2 @ [\<V>']"
+              
+              from v'_in_E2 Cons(2) r2_in_Nv2star validV2 
+              have "set ?tau \<subseteq> E\<^bsub>(ES1 \<parallel> ES2)\<^esub>"
+                by (simp only: composeES_def isViewOn_def V_valid_def, auto)
+              moreover
+              from Cons(3) have "set lambda' \<subseteq> V\<^bsub>\<V>\<^esub>"
+                by auto
+              moreover
+              note Cons(4)
+              moreover
+              from Cons(5) t2_is_r2_v'_s2 have "set s2 \<subseteq> E\<^bsub>ES2\<^esub>"
+                by auto
+              moreover
+              have "?tau \<upharpoonleft> E\<^bsub>ES1\<^esub> @ t1 \<in> Tr\<^bsub>ES1\<^esub>"
+                proof -
+                  from v'_notin_E1 have "[\<V>'] \<upharpoonleft> E\<^bsub>ES1\<^esub> = []"
+                    by (simp add: projection_def)
+                  with Cons(6) Cons(3) t2_is_r2_v'_s2 v'_notin_E1 r2_in_Nv2star 
+                    Nv2_inter_E1_empty r2E1_empty
+                    show ?thesis
+                      by (simp only: t2_is_r2_v'_s2 list_subset_iff_projection_neutral 
+                        projection_concatenation_commute, auto)
+                qed
+              moreover
+              have "?tau \<upharpoonleft> E\<^bsub>ES2\<^esub> @ s2 \<in> Tr\<^bsub>ES2\<^esub>"              
+                by (metis Cons_eq_appendI append_eq_appendI calculation(4) eq_Nil_appendI 
+                  list_subset_iff_projection_neutral Cons.prems(4) Cons.prems(6) 
+                  projection_concatenation_commute t2_is_r2_v'_s2)
+              moreover
+              from Cons(8) v'_notin_E1 have "lambda' \<upharpoonleft> E\<^bsub>ES1\<^esub> = t1 \<upharpoonleft> V\<^bsub>\<V>\<^esub>"         
+                by (simp add: projection_def)
+              moreover
+              from Cons(9) t2_is_r2_v'_s2 r2_Vv_empty v'_in_E2 v'_in_Vv 
+              have "lambda' \<upharpoonleft> E\<^bsub>ES2\<^esub> = s2 \<upharpoonleft> V\<^bsub>\<V>\<^esub>"
+                by (simp add: projection_def)
+              moreover
+              note Cons(10) s2_Cv2_empty
+              moreover
+              note Cons.hyps(1)[of ?tau t1 s2]
+              ultimately obtain t'
+                where tau_t'_in_Tr: "?tau @ t' \<in> Tr\<^bsub>(ES1 \<parallel> ES2)\<^esub>"
+                and t'_Vv_is_lambda': "t' \<upharpoonleft> V\<^bsub>\<V>\<^esub> = lambda'"
+                and t'_Cv_empty: "t' \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"
+                by auto
+
+              let ?t = "r2 @ [\<V>'] @ t'"
+
+              (* conclude that ?t is a suitable choice *)      
+              note tau_t'_in_Tr
+              moreover
+              from r2_Vv_empty t'_Vv_is_lambda' v'_in_Vv 
+              have "?t \<upharpoonleft> V\<^bsub>\<V>\<^esub> = \<V>' # lambda'"
+                by (simp add: projection_def)
+              moreover
+              have "?t \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"
+              proof -
+                from propSepViews have "C\<^bsub>\<V>\<^esub> \<inter> E\<^bsub>ES2\<^esub> \<subseteq> C\<^bsub>\<V>2\<^esub>"
+                  unfolding properSeparationOfViews_def by auto
+                hence "r2 \<upharpoonleft> C\<^bsub>\<V>\<^esub> = []"                 
+                  by (metis projection_on_subset2 r2_Cv2_empty r2_in_E2star)
+                with v'_in_Vv VIsViewOnE t'_Cv_empty show ?thesis
+                  by (simp add: isViewOn_def V_valid_def VC_disjoint_def projection_def, auto)
+              qed
+              ultimately have ?thesis
+                by auto
+            }
+            ultimately show ?thesis
+              by blast
+          qed
+        qed
+  }
+  thus ?thesis 
+    by auto
+qed

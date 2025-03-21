@@ -1,0 +1,30 @@
+proof(induct b arbitrary:v')
+  case (Val v)
+  from \<open>interpret (Val v) s = Some v'\<close> have "v' = v" by(fastforce elim:interpret.cases)
+  thus ?case by simp
+next
+  case (Var V)
+  hence "s' V = Some v'" by(fastforce elim:interpret.cases)
+  thus ?case by simp
+next
+  case (BinOp b1 bop b2)
+  note IH1 = \<open>\<And>v'. \<lbrakk>interpret b1 s = Some v'; \<forall>V \<in> rhs_aux b1. s V = s' V\<rbrakk> 
+             \<Longrightarrow> interpret b1 s' = Some v'\<close>
+  note IH2 = \<open>\<And>v'. \<lbrakk>interpret b2 s = Some v'; \<forall>V \<in> rhs_aux b2. s V = s' V\<rbrakk> 
+             \<Longrightarrow> interpret b2 s' = Some v'\<close>
+  from \<open>interpret (b1 \<guillemotleft>bop\<guillemotright> b2) s = Some v'\<close> 
+  have "\<exists>v\<^sub>1 v\<^sub>2. interpret b1 s = Some v\<^sub>1 \<and> interpret b2 s = Some v\<^sub>2 \<and>
+                binop bop v\<^sub>1 v\<^sub>2 = Some v'"
+    apply(cases "interpret b1 s",simp)
+    apply(cases "interpret b2 s",simp)
+    by(case_tac "binop bop a aa",simp+)
+  then obtain v\<^sub>1 v\<^sub>2 where "interpret b1 s = Some v\<^sub>1"
+    and "interpret b2 s = Some v\<^sub>2" and "binop bop v\<^sub>1 v\<^sub>2 = Some v'" by blast
+  from \<open>\<forall>V \<in> rhs_aux (b1 \<guillemotleft>bop\<guillemotright> b2). s V = s' V\<close> have "\<forall>V \<in> rhs_aux b1. s V = s' V"
+    by simp
+  from IH1[OF \<open>interpret b1 s = Some v\<^sub>1\<close> this] have "interpret b1 s' = Some v\<^sub>1" .
+  from \<open>\<forall>V \<in> rhs_aux (b1 \<guillemotleft>bop\<guillemotright> b2). s V = s' V\<close> have "\<forall>V \<in> rhs_aux b2. s V = s' V"
+    by simp
+  from IH2[OF \<open>interpret b2 s = Some v\<^sub>2\<close> this] have "interpret b2 s' = Some v\<^sub>2" .
+  with \<open>interpret b1 s' = Some v\<^sub>1\<close> \<open>binop bop v\<^sub>1 v\<^sub>2 = Some v'\<close> show ?case by simp
+qed

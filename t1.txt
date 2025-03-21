@@ -1,0 +1,242 @@
+proof (simp add: WHATWHERE_Secure_def, auto)
+  fix d PP
+  from uniPPif have nocommonPP: "set (PPc c1) \<inter> set (PPc c2) = {}"
+    by (simp add: unique_PPc_def)
+
+  from uniPPif have pp_difference: "\<iota> \<notin> set (PPc c1) \<union> set (PPc c2)"
+    by (simp add: unique_PPc_def)
+  
+  from WWs_branch1 obtain R1' where R1'assump: 
+    "SdlHPPB d PP R1' \<and> ([c1],[c1]) \<in> R1'"
+    by (simp add: WHATWHERE_Secure_def, auto)
+  
+  define R1 where "R1 = {(V,V'). (V,V') \<in> R1' \<and> set (PPV V) \<subseteq> set (PPc c1) 
+    \<and> set (PPV V') \<subseteq> set (PPc c1)}"
+
+  from R1'assump R1_def SdlHPPB_restricted_on_PP_is_SdlHPPB
+  have SdlHPPR1: "SdlHPPB d PP R1"
+    by force
+    
+  from WWs_branch2 obtain R2' where R2'assump: 
+    "SdlHPPB d PP R2' \<and> ([c2],[c2]) \<in> R2'"
+    by (simp add: WHATWHERE_Secure_def, auto)
+
+  define R2 where "R2 = {(V,V'). (V,V') \<in> R2' \<and> set (PPV V) \<subseteq> set (PPc c2) 
+    \<and> set (PPV V') \<subseteq> set (PPc c2)}"
+
+  from R2'assump R2_def SdlHPPB_restricted_on_PP_is_SdlHPPB
+  have SdlHPPR2: "SdlHPPB d PP R2"
+    by force
+
+  from nocommonPP have "Domain R1 \<inter> Domain R2 \<subseteq> {[]}"
+
+    by (simp add: R1_def R2_def, auto,
+      metis empty_subsetI inf_idem inf_mono set_eq_subset unique_V_uneq)
+
+  with commonArefl_subset_commonDomain
+  have Areflassump1: "Arefl R1 \<inter> Arefl R2 \<subseteq> {[]}"
+    by force
+    
+  with SdlHPPR1 SdlHPPR2 Union_Strong_dlHPP_Bisim have SdlHPPR1R2: 
+    "SdlHPPB d PP (R1 \<union> R2)"
+    by force
+
+  define R where "R = (R1 \<union> R2) \<union> {([],[])}"
+  
+  define R0 where "R0 = {(i1,i2). \<exists>\<iota>' \<iota>'' b' b'' c1' c1'' c2' c2''. 
+    i1 = [if\<^bsub>\<iota>'\<^esub> b' then c1' else c2' fi]
+    \<and> i2 = [if\<^bsub>\<iota>''\<^esub> b'' then c1'' else c2'' fi] 
+    \<and> \<iota>' \<notin> (set (PPc c1) \<union> set (PPc c2))
+    \<and> \<iota>'' \<notin> (set (PPc c1) \<union> set (PPc c2)) \<and> ([c1'],[c1'']) \<in> R1
+    \<and> ([c2'],[c2'']) \<in> R2 \<and> b' \<equiv>\<^bsub>d\<^esub> b''}"
+
+  with R_def R1_def R1'assump R2_def R2'assump pp_difference dind
+  have inR0: "([if\<^bsub>\<iota>\<^esub> b then c1 else c2 fi],[if\<^bsub>\<iota>\<^esub> b then c1 else c2 fi]) \<in> R0"
+    by auto
+  
+  from R0_def R_def R1_def R2_def
+  have "Domain R0 \<inter> Domain R = {}"
+    by auto
+    
+  with commonArefl_subset_commonDomain
+  have Areflassump2: "Arefl R0 \<inter> Arefl R \<subseteq> {[]}"
+    by force
+  
+  have disjuptoR0: 
+    "disj_dlHPP_Bisimulation_Up_To_R' d PP R R0"
+    proof (simp add: disj_dlHPP_Bisimulation_Up_To_R'_def, auto)
+      from SdlHPPR1R2 adding_emptypair_keeps_SdlHPPB
+      show "SdlHPPB d PP R"
+        by (simp add: R_def)
+    next
+      from SdlHPPR1 have symR1: "sym R1"
+        by (simp add: Strong_dlHPP_Bisimulation_def)
+      from SdlHPPR2 have symR2: "sym R2"
+        by (simp add: Strong_dlHPP_Bisimulation_def)
+      from symR1 symR2 d_indistinguishable_sym R0_def show "sym R0"
+        by (simp add: sym_def, fastforce)
+    next
+      from SdlHPPR1 have transR1: "trans R1"
+        by (simp add: Strong_dlHPP_Bisimulation_def)
+      from SdlHPPR2 have transR2: "trans R2"
+        by (simp add: Strong_dlHPP_Bisimulation_def)
+      show "trans R0"
+        proof  -
+          {
+            fix V' V'' V'''
+            assume p1: "(V',V'') \<in> R0"
+            assume p2: "(V'',V''') \<in> R0"
+            
+            from p1 R0_def obtain \<iota>' \<iota>'' b' b'' c1' c1'' c2' c2'' where
+              passump1: "V' = [if\<^bsub>\<iota>'\<^esub> b' then c1' else c2' fi]
+              \<and> V'' = [if\<^bsub>\<iota>''\<^esub> b'' then c1'' else c2'' fi]
+              \<and> \<iota>' \<notin> (set (PPc c1) \<union> set (PPc c2))
+              \<and> \<iota>'' \<notin> (set (PPc c1) \<union> set (PPc c2)) 
+              \<and> ([c1'],[c1'']) \<in> R1 \<and> ([c2'],[c2'']) \<in> R2 
+              \<and> b' \<equiv>\<^bsub>d\<^esub> b''"
+              by force
+
+            with p2 R0_def obtain \<iota>''' b''' c1''' c2''' where
+              passump2: "V''' = [if\<^bsub>\<iota>'''\<^esub> b''' then c1''' else c2''' fi]
+              \<and> \<iota>''' \<notin> (set (PPc c1) \<union> set (PPc c2)) 
+              \<and> ([c1''],[c1''']) \<in> R1 \<and> ([c2''],[c2''']) \<in> R2 
+              \<and> b'' \<equiv>\<^bsub>d\<^esub> b'''"
+              by force
+
+            with passump1 transR1 transR2 d_indistinguishable_trans
+            have "([c1'],[c1''']) \<in> R1 \<and> ([c2'],[c2''']) \<in> R2 
+              \<and> b' \<equiv>\<^bsub>d\<^esub> b'''"
+              by (metis transD)
+
+            with passump1 passump2 R0_def have "(V',V''') \<in> R0"
+              by auto
+          }
+          thus ?thesis unfolding trans_def by blast
+        qed
+    next
+      fix V V'
+      assume inR0: "(V,V') \<in> R0"
+      with R0_def show "length V = length V'" by auto
+    next
+      fix V' V'' i
+      assume inR0: "(V',V'') \<in> R0"
+      assume irange: "i < length V'"
+      assume notIDC: "\<not> IDC d (V'!i) (htchLoc (pp (V'!i)))"
+
+      from inR0 R0_def obtain \<iota>' \<iota>'' b' b'' c1' c1'' c2' c2'' 
+        where R0pair: "V' = [if\<^bsub>\<iota>'\<^esub> b' then c1' else c2' fi] 
+        \<and> V'' = [if\<^bsub>\<iota>''\<^esub> b'' then c1'' else c2'' fi]
+        \<and> \<iota>' \<notin> set (PPc c1) \<union> set (PPc c2) 
+        \<and> \<iota>'' \<notin> set (PPc c1) \<union> set (PPc c2) 
+        \<and> ([c1'],[c1'']) \<in> R1 \<and> ([c2'],[c2'']) \<in> R2
+        \<and> b' \<equiv>\<^bsub>d\<^esub> b''"
+        by force
+      
+      have "NDC d (if\<^bsub>\<iota>'\<^esub> b' then c1' else c2' fi)"
+        proof -
+          {
+            fix m
+            from nextmem_exists_and_unique obtain m' p \<alpha> where ifnextmem:
+              "\<langle>if\<^bsub>\<iota>'\<^esub> b' then c1' else c2' fi,m\<rangle> \<rightarrow>\<lhd>\<alpha>\<rhd> \<langle>p,m'\<rangle> 
+              \<and> (\<forall>m''.(\<exists>p \<alpha>.\<langle>if\<^bsub>\<iota>'\<^esub> b' then c1' else c2' fi,m\<rangle> \<rightarrow>\<lhd>\<alpha>\<rhd> \<langle>p,m''\<rangle>) 
+              \<longrightarrow> m'' = m')"
+              by blast
+            
+            hence "m = m'"
+              by (metis MWLsSteps_det.iffalse MWLsSteps_det.iftrue)
+            
+            with ifnextmem have eqnextmem: 
+              "\<lbrakk>if\<^bsub>\<iota>'\<^esub> b' then c1' else c2' fi\<rbrakk>(m) = m"
+              by (simp add: NextMem_def, auto)
+          }
+          thus ?thesis
+            by (simp add: NDC_def)
+        qed
+
+      with R0pair irange show "NDC d (V'!i)"
+        by simp
+    next
+      fix V' V'' i m1 m1' m2 \<alpha> p 
+      assume inR0: "(V',V'') \<in> R0"
+      assume irange: "i < length V'"
+      assume step: "\<langle>V'!i,m1\<rangle> \<rightarrow>\<lhd>\<alpha>\<rhd> \<langle>p,m2\<rangle>"
+      assume dhequal: "m1 \<sim>\<^bsub>d,htchLocSet PP\<^esub> m1'"
+
+      from inR0 R0_def obtain \<iota>' \<iota>'' b' b'' c1' c1'' c2' c2'' 
+        where R0pair: "V' = [if\<^bsub>\<iota>'\<^esub> b' then c1' else c2' fi] 
+        \<and> V'' = [if\<^bsub>\<iota>''\<^esub> b'' then c1'' else c2'' fi]
+        \<and> \<iota>' \<notin> set (PPc c1) \<union> set (PPc c2) 
+        \<and> \<iota>'' \<notin> set (PPc c1) \<union> set (PPc c2) 
+        \<and> ([c1'],[c1'']) \<in> R1 \<and> ([c2'],[c2'']) \<in> R2
+        \<and> b' \<equiv>\<^bsub>d\<^esub> b''"
+        by force
+
+      with R0pair irange step have case_distinction:
+        "(p = Some c1' \<and> BMap (E b' m1) = True)
+        \<or> (p = Some c2' \<and> BMap (E b' m1) = False)"
+        by (simp, metis MWLsSteps_det_cases(4))
+      moreover
+      \<comment> \<open>Case 1: b evaluates to True\<close>
+      {
+        assume passump: "p = Some c1'"
+        assume eval: "BMap (E b' m1) = True"
+
+        from R0pair step irange have stepconcl: "\<alpha> = [] \<and> m2 = m1"
+          by (simp, metis MWLs_semantics.MWLsSteps_det_cases(4))
+          
+        from eval R0pair dhequal have eval': "BMap (E b'' m1') = True"
+          by (simp add: d_indistinguishable_def dH_equal_def, auto)
+
+        hence step': "\<langle>if\<^bsub>\<iota>''\<^esub> b'' then c1'' else c2'' fi,m1'\<rangle> \<rightarrow>\<lhd>[]\<rhd> 
+          \<langle>Some c1'',m1'\<rangle>"
+          by (simp add: MWLsSteps_det.iftrue)
+
+        with passump R0pair R_def dhequal stepconcl irange
+        have "\<exists>p' \<alpha>' m2'. \<langle>V''!i,m1'\<rangle> \<rightarrow>\<lhd>\<alpha>'\<rhd> \<langle>p',m2'\<rangle> \<and>
+        stepResultsinR p p' (R0 \<union> R) \<and>
+        ((\<alpha>,\<alpha>') \<in> R0 \<or> (\<alpha>,\<alpha>') \<in> R) \<and>
+        dhequality_alternative d PP (pp (V'!i)) m2 m2'"
+          by (simp add: stepResultsinR_def dhequality_alternative_def, 
+            auto)
+      }
+      moreover
+      \<comment> \<open>Case 2: b evaluates to False\<close>
+      {
+        assume passump: "p = Some c2'"
+        assume eval: "BMap (E b' m1) = False"
+
+        from R0pair step irange have stepconcl: "\<alpha> = [] \<and> m2 = m1"
+          by (simp, metis MWLs_semantics.MWLsSteps_det_cases(4))
+
+        from eval R0pair dhequal have eval': "BMap (E b'' m1') = False"
+          by (simp add: d_indistinguishable_def dH_equal_def, auto)
+
+        hence step': "\<langle>if\<^bsub>\<iota>''\<^esub> b'' then c1'' else c2'' fi,m1'\<rangle> \<rightarrow>\<lhd>[]\<rhd> 
+          \<langle>Some c2'',m1'\<rangle>"
+          by (simp add: MWLsSteps_det.iffalse)
+
+        with passump R0pair R_def dhequal stepconcl irange
+        have "\<exists>p' \<alpha>' m2'. \<langle>V''!i,m1'\<rangle> \<rightarrow>\<lhd>\<alpha>'\<rhd> \<langle>p',m2'\<rangle> \<and>
+        stepResultsinR p p' (R0 \<union> R) \<and>
+        ((\<alpha>,\<alpha>') \<in> R0 \<or> (\<alpha>,\<alpha>') \<in> R) \<and>
+        dhequality_alternative d PP (pp (V'!i)) m2 m2'"
+          by (simp add: stepResultsinR_def dhequality_alternative_def, 
+            auto)
+      }
+      ultimately 
+      show "\<exists>p' \<alpha>' m2'. \<langle>V''!i,m1'\<rangle> \<rightarrow>\<lhd>\<alpha>'\<rhd> \<langle>p',m2'\<rangle> \<and>
+        stepResultsinR p p' (R0 \<union> R) \<and>
+        ((\<alpha>,\<alpha>') \<in> R0 \<or> (\<alpha>,\<alpha>') \<in> R) \<and>
+        dhequality_alternative d PP (pp (V'!i)) m2 m2'"
+        by auto
+    qed
+      
+  with Areflassump2 Up_To_Technique
+  have "SdlHPPB d PP (R0 \<union> R)"
+    by auto
+
+  with inR0 show "\<exists>R. SdlHPPB d PP R
+    \<and> ([if\<^bsub>\<iota>\<^esub> b then c1 else c2 fi],[if\<^bsub>\<iota>\<^esub> b then c1 else c2 fi]) \<in> R"
+    by auto
+    
+qed

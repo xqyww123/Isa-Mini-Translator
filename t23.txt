@@ -1,0 +1,107 @@
+proof(induct rule:WCFG_induct)
+  case (WCFG_LAss V e)
+  have "Uses (V:=e) (_0_) = {V. V \<in> rhs_aux e}"
+    by(fastforce elim:labels.cases intro:Labels_Base)
+  with \<open>\<forall>V'\<in>Uses (V:=e) (_0_). s V' = s' V'\<close> 
+  have "\<forall>V'\<in>rhs_aux e. s V' = s' V'" by blast
+  have "Defs (V:=e) (_0_) = {V}"
+    by(fastforce elim:labels.cases intro:Labels_Base)
+  have "transfer \<Up>\<lambda>s. s(V := interpret e s) s V =
+        transfer \<Up>\<lambda>s. s(V := interpret e s) s' V"
+  proof(cases "interpret e s")
+    case None
+    { fix v assume "interpret e s' = Some v"
+      with \<open>\<forall>V'\<in>rhs_aux e. s V' = s' V'\<close> have "interpret e s = Some v"
+        by(fastforce intro:rhs_interpret_eq)
+      with None have False by(fastforce split:if_split_asm) }
+    with None show ?thesis by fastforce
+  next
+    case (Some v)
+    hence "interpret e s = Some v" by(fastforce split:if_split_asm)
+    with \<open>\<forall>V'\<in>rhs_aux e. s V' = s' V'\<close>
+    have "interpret e s' = Some v" by(fastforce intro:rhs_interpret_eq)
+    with Some show ?thesis by simp
+  qed
+  with \<open>Defs (V:=e) (_0_) = {V}\<close> show ?case by simp
+next
+  case (WCFG_SeqFirst c\<^sub>1 n et n' c\<^sub>2)
+  note IH = \<open>\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V 
+    \<Longrightarrow> \<forall>V\<in>Defs c\<^sub>1 n. transfer et s V = transfer et s' V\<close>
+  from \<open>\<forall>V\<in>Uses (c\<^sub>1;;c\<^sub>2) n. s V = s' V\<close> have "\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V"
+    by auto(drule Labels_Seq1[of _ _ _ c\<^sub>2],erule_tac x="V" in allE,auto)
+  from IH[OF this] have "\<forall>V\<in>Defs c\<^sub>1 n. transfer et s V = transfer et s' V" .
+  with \<open>c\<^sub>1 \<turnstile> n -et\<rightarrow> n'\<close> show ?case using Labels_Base 
+    apply clarsimp 
+    apply(erule labels.cases,auto dest:WCFG_sourcelabel_less_num_nodes)
+    by(erule_tac x="V" in allE,fastforce)
+next
+  case (WCFG_SeqConnect c\<^sub>1 n et c\<^sub>2)
+  note IH = \<open>\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V 
+    \<Longrightarrow> \<forall>V\<in>Defs c\<^sub>1 n. transfer et s V = transfer et s' V\<close>
+  from \<open>\<forall>V\<in>Uses (c\<^sub>1;;c\<^sub>2) n. s V = s' V\<close> have "\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V"
+    by auto(drule Labels_Seq1[of _ _ _ c\<^sub>2],erule_tac x="V" in allE,auto)
+  from IH[OF this] have "\<forall>V\<in>Defs c\<^sub>1 n. transfer et s V = transfer et s' V" .
+  with \<open>c\<^sub>1 \<turnstile> n -et\<rightarrow> (_Exit_)\<close> show ?case using Labels_Base 
+    apply clarsimp 
+    apply(erule labels.cases,auto dest:WCFG_sourcelabel_less_num_nodes)
+    by(erule_tac x="V" in allE,fastforce)
+next
+  case (WCFG_SeqSecond c\<^sub>2 n et n' c\<^sub>1)
+  note IH = \<open>\<forall>V\<in>Uses c\<^sub>2 n. s V = s' V 
+    \<Longrightarrow> \<forall>V\<in>Defs c\<^sub>2 n. transfer et s V = transfer et s' V\<close>
+  from \<open>\<forall>V\<in>Uses (c\<^sub>1;;c\<^sub>2) (n \<oplus> #:c\<^sub>1). s V = s' V\<close> have "\<forall>V\<in>Uses c\<^sub>2 n. s V = s' V"
+    by(auto,blast dest:Labels_Seq2)
+  from IH[OF this] have "\<forall>V\<in>Defs c\<^sub>2 n. transfer et s V = transfer et s' V" .
+  with num_inner_nodes_gr_0[of "c\<^sub>1"] show ?case
+    apply clarsimp
+    apply(erule labels.cases,auto)
+    by(cases n,auto dest:label_less_num_inner_nodes)+
+next
+  case (WCFG_CondThen c\<^sub>1 n et n' b c\<^sub>2)
+  note IH = \<open>\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V 
+    \<Longrightarrow> \<forall>V\<in>Defs c\<^sub>1 n. transfer et s V = transfer et s' V\<close>
+  from \<open>\<forall>V\<in>Uses (if (b) c\<^sub>1 else c\<^sub>2) (n \<oplus> 1). s V = s' V\<close> 
+  have "\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V" by(auto,blast dest:Labels_CondTrue)
+  from IH[OF this] have "\<forall>V\<in>Defs c\<^sub>1 n. transfer et s V = transfer et s' V" .
+  with \<open>c\<^sub>1 \<turnstile> n -et\<rightarrow> n'\<close> show ?case
+    apply clarsimp 
+    apply(erule labels.cases,auto)
+    apply(cases n,auto dest:label_less_num_inner_nodes)
+    by(cases n,auto dest:WCFG_sourcelabel_less_num_nodes)
+next
+  case (WCFG_CondElse c\<^sub>2 n et n' b c\<^sub>1)
+  note IH = \<open>\<forall>V\<in>Uses c\<^sub>2 n. s V = s' V 
+    \<Longrightarrow> \<forall>V\<in>Defs c\<^sub>2 n. transfer et s V = transfer et s' V\<close>
+  from \<open>\<forall>V\<in>Uses (if (b) c\<^sub>1 else c\<^sub>2) (n \<oplus> #:c\<^sub>1 + 1). s V = s' V\<close> 
+  have "\<forall>V\<in>Uses c\<^sub>2 n. s V = s' V"
+    by auto(drule Labels_CondFalse[of _ _ _ b c\<^sub>1],erule_tac x="V" in allE,
+       auto simp:add.assoc)
+  from IH[OF this] have "\<forall>V\<in>Defs c\<^sub>2 n. transfer et s V = transfer et s' V" .
+  with \<open>c\<^sub>2 \<turnstile> n -et\<rightarrow> n'\<close> show ?case
+    apply clarsimp 
+    apply(erule labels.cases,auto)
+    apply(cases n,auto dest:label_less_num_inner_nodes)
+    by(cases n,auto dest:WCFG_sourcelabel_less_num_nodes)
+next
+  case (WCFG_WhileBody c' n et n' b)
+  note IH = \<open>\<forall>V\<in>Uses c' n. s V = s' V 
+    \<Longrightarrow> \<forall>V\<in>Defs c' n. transfer et s V = transfer et s' V\<close>
+  from \<open>\<forall>V\<in>Uses (while (b) c') (n \<oplus> 2). s V = s' V\<close> have "\<forall>V\<in>Uses c' n. s V = s' V"
+    by auto(drule Labels_WhileBody[of _ _ _ b],erule_tac x="V" in allE,auto)
+  from IH[OF this] have "\<forall>V\<in>Defs c' n. transfer et s V = transfer et s' V" .
+  thus ?case
+    apply clarsimp 
+    apply(erule labels.cases,auto)
+    by(cases n,auto dest:label_less_num_inner_nodes)
+next
+  case (WCFG_WhileBodyExit c' n et b)
+  note IH = \<open>\<forall>V\<in>Uses c' n. s V = s' V 
+    \<Longrightarrow> \<forall>V\<in>Defs c' n. transfer et s V = transfer et s' V\<close>
+  from \<open>\<forall>V\<in>Uses (while (b) c') (n \<oplus> 2). s V = s' V\<close> have "\<forall>V\<in>Uses c' n. s V = s' V"
+    by auto(drule Labels_WhileBody[of _ _ _ b],erule_tac x="V" in allE,auto)
+  from IH[OF this] have "\<forall>V\<in>Defs c' n. transfer et s V = transfer et s' V" .
+  thus ?case
+    apply clarsimp 
+    apply(erule labels.cases,auto)
+    by(cases n,auto dest:label_less_num_inner_nodes)
+qed (fastforce elim:labels.cases)+

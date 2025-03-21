@@ -1,0 +1,44 @@
+proof
+      show "\<And>gf. \<not> CopxC.arr gf \<Longrightarrow> map gf = S.null"
+        using map_def by auto
+      fix gf
+      assume gf: "CopxC.arr gf"
+      thus arr: "S.arr (map gf)" using gf arr_map by blast
+      show "S.dom (map gf) = map (CopxC.dom gf)"
+        using arr gf local.map_def map_ide by auto
+      show "S.cod (map gf) = map (CopxC.cod gf)"
+        using gf set_subset_Univ \<psi>_mapsto map_def set_def S.arr_mkIde arr map_ide by auto
+      next
+      fix gf gf'
+      assume gf': "CopxC.seq gf' gf"
+      hence seq: "C.arr (fst gf) \<and> C.arr (snd gf) \<and> C.dom (snd gf') = C.cod (snd gf) \<and>
+                  C.arr (fst gf') \<and> C.arr (snd gf') \<and> C.dom (fst gf) = C.cod (fst gf')"
+        by (elim CopxC.seqE C.seqE, auto)
+      have 0: "S.arr (map (CopxC.comp gf' gf))"
+        using gf' arr_map by blast
+      have 1: "map (gf' \<odot> gf) =
+                    S.mkArr (set (CopxC.dom gf)) (set (CopxC.cod gf'))
+                            (\<phi> (CopxC.cod gf') o (\<lambda>h. snd (gf' \<odot> gf) \<cdot> h \<cdot> fst (gf' \<odot> gf))
+                                               o \<psi> (CopxC.dom gf))"
+        using gf' map_def using CopxC.cod_comp CopxC.dom_comp by auto
+      also have "... = S.mkArr (set (CopxC.dom gf)) (set (CopxC.cod gf'))
+                               (\<phi> (CopxC.cod gf') \<circ> (\<lambda>h. snd gf' \<cdot> h \<cdot> fst gf') \<circ> \<psi> (CopxC.dom gf')
+                                \<circ>
+                               (\<phi> (CopxC.cod gf) \<circ> (\<lambda>h. snd gf \<cdot> h \<cdot> fst gf) \<circ> \<psi> (CopxC.dom gf)))"
+      proof (intro S.mkArr_eqI')
+        show "S.arr (S.mkArr (set (CopxC.dom gf)) (set (CopxC.cod gf'))
+                             (\<phi> (CopxC.cod gf') \<circ> (\<lambda>h. snd (gf' \<odot> gf) \<cdot> h \<cdot> fst (gf' \<odot> gf))
+                                                \<circ> \<psi> (CopxC.dom gf)))"
+          using 0 1 by simp
+        show "\<And>x. x \<in> set (CopxC.dom gf) \<Longrightarrow>
+                     (\<phi> (CopxC.cod gf') \<circ> (\<lambda>h. snd (gf' \<odot> gf) \<cdot> h \<cdot> fst (gf' \<odot> gf)) \<circ>
+                      \<psi> (CopxC.dom gf)) x =
+                     (\<phi> (CopxC.cod gf') \<circ> (\<lambda>h. snd gf' \<cdot> h \<cdot> fst gf') \<circ> \<psi> (CopxC.dom gf') \<circ>
+                      (\<phi> (CopxC.cod gf) \<circ> (\<lambda>h. snd gf \<cdot> h \<cdot> fst gf) \<circ> \<psi> (CopxC.dom gf))) x"
+          using gf' \<psi>_mapsto set_def \<psi>_\<phi> C.comp_assoc by fastforce
+      qed
+      also have "... = map gf' \<cdot>\<^sub>S map gf"
+        using seq gf' map_def arr_map [of gf] arr_map [of gf'] S.comp_mkArr by auto
+      finally show "map (gf' \<odot> gf) = map gf' \<cdot>\<^sub>S map gf"
+        using seq gf' by auto
+    qed

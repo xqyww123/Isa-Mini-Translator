@@ -1,0 +1,85 @@
+   proof
+      show "\<And>b. Cop.ide b \<Longrightarrow> \<guillemotleft>\<T>\<^sub>o e b : Y a b \<rightarrow>\<^sub>S F b\<guillemotright>"
+        using ide_a e \<T>\<^sub>o_in_hom by simp
+      fix g :: 'c
+      assume g: "Cop.arr g"
+      let ?b = "Cop.dom g"
+      let ?b' = "Cop.cod g"
+      show "\<T>\<^sub>o e (Cop.cod g) \<cdot>\<^sub>S Y a g = F g \<cdot>\<^sub>S \<T>\<^sub>o e (Cop.dom g)"
+      proof -
+        have 1: "\<T>\<^sub>o e (Cop.cod g) \<cdot>\<^sub>S Y a g =
+                 S.mkArr (Hom.set (?b, a)) (F.SET ?b')
+                         ((\<lambda>x. F.FUN (\<psi> (?b', a) x) e) o (\<phi> (?b', a) o Cop.comp g o \<psi> (?b, a)))"
+        proof -
+          have "S.arr (S.mkArr (Hom.set (?b', a)) (F.SET ?b') (\<lambda>s. F.FUN (\<psi> (?b', a) s) e)) \<and>
+                S.dom (S.mkArr (Hom.set (?b', a)) (F.SET ?b') (\<lambda>s. F.FUN (\<psi> (?b', a) s) e))
+                   = Y a ?b' \<and>
+                S.cod (S.mkArr (Hom.set (?b', a)) (F.SET ?b') (\<lambda>s. F.FUN (\<psi> (?b', a) s) e))
+                   = F ?b'"
+            using Cop.cod_char \<T>\<^sub>o_def \<T>\<^sub>o_in_hom e g
+            by (metis Cop.ide_char Cop.ide_cod S.in_homE)
+          moreover have "Y a g = S.mkArr (Hom.set (?b, a)) (Hom.set (?b', a))
+                                         (\<phi> (?b', a) \<circ> Cop.comp g \<circ> \<psi> (?b, a))"
+            using Y_ide_arr [of a g ?b' ?b] ide_a g by auto
+          ultimately show ?thesis
+            using ide_a e g Y_ide_arr Cop.cod_char \<T>\<^sub>o_def S.comp_mkArr preserves_arr
+            by metis
+        qed
+        also have "... = S.mkArr (Hom.set (?b, a)) (F.SET ?b')
+                                 (F.FUN g o (\<lambda>x. F.FUN (\<psi> (?b, a) x) e))"
+        proof (intro S.mkArr_eqI')
+          show "S.arr (S.mkArr (Hom.set (?b, a)) (F.SET ?b')
+                               ((\<lambda>x. F.FUN (\<psi> (?b', a) x) e)
+                                  o (\<phi> (?b', a) o Cop.comp g o \<psi> (?b, a))))"
+          proof (intro S.arr_mkArrI)
+            show "setp (Hom.set (Cop.dom g, a))"
+              by (metis C.ideD(1) Cop.arr_dom Cop.ide_char CopxC.arrI\<^sub>P\<^sub>C Hom.arr_map
+                  S.arr_mkIde Cop.ide_dom g Hom.map_ide ide_a)
+            show "setp (F.SET (Cop.cod g))"
+              using g by force
+            show "(\<lambda>x. F.FUN (\<psi> (?b', a) x) e) o (\<phi> (?b', a) o Cop.comp g o \<psi> (?b, a))
+                      \<in> Hom.set (?b, a) \<rightarrow> F.SET ?b'"
+            proof -
+              have "S.arr (S (\<T>\<^sub>o e ?b') (Y a g))"
+                using ide_a e g \<T>\<^sub>o_in_hom Y_ide_arr(1) Cop.ide_char Cop.ide_cod by blast
+              thus ?thesis using 1 by simp
+            qed
+          qed
+          show "\<And>x. x \<in> Hom.set (?b, a) \<Longrightarrow>
+                        ((\<lambda>x. F.FUN (\<psi> (?b', a) x) e) o (\<phi> (?b', a) o Cop.comp g o \<psi> (?b, a))) x
+                        = (F.FUN g o (\<lambda>x. F.FUN (\<psi> (?b, a) x) e)) x"
+          proof -
+            fix x
+            assume x: "x \<in> Hom.set (?b, a)"
+            have "((\<lambda>x. (F.FUN o \<psi> (?b', a)) x e)
+                       o (\<phi> (?b', a) o Cop.comp g o \<psi> (?b, a))) x
+                    = F.FUN (\<psi> (?b', a) (\<phi> (?b', a) (C (\<psi> (?b, a) x) g))) e"
+              by simp
+            also have "... = (F.FUN g o (F.FUN o \<psi> (?b, a)) x) e"
+            proof -
+              have "\<guillemotleft>\<psi> (?b, a) x : ?b \<rightarrow> a\<guillemotright>"
+                using ide_a x g Hom.\<psi>_mapsto [of ?b a] by auto
+              thus ?thesis
+                using assms g Hom.\<psi>_\<phi> F.preserves_comp by fastforce
+            qed
+            also have "... = (F.FUN g o (\<lambda>x. F.FUN (\<psi> (?b, a) x) e)) x" by fastforce
+            finally show "((\<lambda>x. F.FUN (\<psi> (?b', a) x) e) o (\<phi> (?b', a) o Cop.comp g o \<psi> (?b, a))) x
+                            = (F.FUN g o (\<lambda>x. F.FUN (\<psi> (?b, a) x) e)) x"
+              by simp
+          qed
+        qed
+        also have "... = F g \<cdot>\<^sub>S \<T>\<^sub>o e ?b"
+        proof -
+          have "S.arr (F g) \<and> F g = S.mkArr (F.SET ?b) (F.SET ?b') (F.FUN g)"
+            using g S.mkArr_Fun [of "F g"] by simp
+          moreover have
+              "S.arr (\<T>\<^sub>o e ?b) \<and>
+               \<T>\<^sub>o e ?b = S.mkArr (Hom.set (?b, a)) (F.SET ?b) (\<lambda>x. F.FUN (\<psi> (?b, a) x) e)"
+            using e g \<T>\<^sub>o_def \<T>\<^sub>o_in_hom
+            by (metis C.ide_cod Cop.arr_char Cop.dom_char S.in_homE)
+          ultimately show ?thesis
+            using S.comp_mkArr by metis
+        qed
+        finally show ?thesis by blast
+      qed
+    qed

@@ -1,0 +1,88 @@
+proof (induct rule:red_reds_inducts)
+  case (RedNew h a C FDTs h' l sh es)
+  have new: "new_Addr h = Some a"
+   and h': "h' = h(a\<mapsto>blank P C)"
+   and shconf: "P,h \<turnstile>\<^sub>s sh \<surd>" by fact+
+  from new have None: "h a = None" by(rule new_Addr_SomeD)
+  then show "P,h' \<turnstile>\<^sub>s sh \<surd>" using h' by(fast intro: shconf_hnew[OF shconf])
+next
+  case (RedFAss C F t D h a fs v l sh b)
+  let ?fs' = "fs((F,D)\<mapsto>v)"
+  have shconf: "P,h \<turnstile>\<^sub>s sh \<surd>" and ha: "h a = Some(C,fs)" by fact+
+  then show "P,h(a\<mapsto>(C, ?fs')) \<turnstile>\<^sub>s sh \<surd>" by (rule shconf_hupd_obj)
+next
+  case (RedSFAss C F t D sh sfs i sfs' v sh' h l)
+  let ?sfs' = "sfs(F\<mapsto>v)"
+  have shconf: "P,h \<turnstile>\<^sub>s sh \<surd>" and shD: "sh D = \<lfloor>(sfs, i)\<rfloor>"
+    and wt: "P,E,h,sh \<turnstile> C\<bullet>\<^sub>sF{D} := Val v : T" by fact+
+  from wt obtain TF Tv where typeofv: "typeof\<^bsub>h\<^esub> v = Some Tv"
+    and has: "P \<turnstile> C has F,Static:TF in D"
+    and sub: "P \<turnstile> Tv \<le> TF" by (auto elim: WTrt.cases)
+  have has': "P \<turnstile> D has F,Static:TF in D" using has by(rule has_field_idemp)
+  have "P,h,D \<turnstile>\<^sub>s ?sfs' \<surd>"
+  proof (rule soconf_fupd[OF has'])
+    show "P,h,D \<turnstile>\<^sub>s sfs \<surd>" using shconf shD by(simp add:shconf_def)
+    show "P,h \<turnstile> v :\<le> TF" using sub typeofv by(simp add:conf_def)
+  qed
+  with shconf have "P,h \<turnstile>\<^sub>s sh(D\<mapsto>(?sfs',i)) \<surd>" by (rule shconf_upd_obj)
+  then show ?case using RedSFAss.hyps(3) RedSFAss.hyps(4) by blast
+next
+  case (InitNoneRed sh C C' Cs e h l)
+  let ?sfs' = "sblank P C"
+  have "P,h \<turnstile>\<^sub>s sh(C \<mapsto> (?sfs', Prepared)) \<surd>"
+  proof(rule shconf_upd_obj)
+    show "P,h \<turnstile>\<^sub>s sh \<surd>" using InitNoneRed by simp
+    show "P,h,C \<turnstile>\<^sub>s sblank P C \<surd>" by (metis has_field_def soconf_def soconf_sblank)
+  qed
+  then show ?case by blast
+next
+  case (InitObjectRed sh C sfs sh' C' Cs e h l)
+  have sh': "sh' = sh(C \<mapsto> (sfs, Processing))" by fact
+  have "P,h \<turnstile>\<^sub>s sh(C \<mapsto> (sfs, Processing)) \<surd>"
+  proof(rule shconf_upd_obj)
+    show "P,h \<turnstile>\<^sub>s sh \<surd>" using InitObjectRed by simp
+    moreover have "sh C = \<lfloor>(sfs, Prepared)\<rfloor>" using InitObjectRed by simp
+    ultimately show "P,h,C \<turnstile>\<^sub>s sfs \<surd>" using shconfD by blast
+  qed
+  then show ?case using sh' by blast
+next
+  case (InitNonObjectSuperRed sh C sfs D a b sh' C' Cs e h l)
+  have sh': "sh' = sh(C \<mapsto> (sfs, Processing))" by fact
+  have "P,h \<turnstile>\<^sub>s sh(C \<mapsto> (sfs, Processing)) \<surd>"
+  proof(rule shconf_upd_obj)
+    show "P,h \<turnstile>\<^sub>s sh \<surd>" using InitNonObjectSuperRed by simp
+    moreover have "sh C = \<lfloor>(sfs, Prepared)\<rfloor>" using InitNonObjectSuperRed by simp
+    ultimately show "P,h,C \<turnstile>\<^sub>s sfs \<surd>" using shconfD by blast
+  qed
+  then show ?case using sh' by blast
+next
+  case (RedRInit sh C sfs i sh' C' Cs e v h l)
+  have sh': "sh' = sh(C \<mapsto> (sfs, Done))" by fact
+  have "P,h \<turnstile>\<^sub>s sh(C \<mapsto> (sfs, Done)) \<surd>"
+  proof(rule shconf_upd_obj)
+    show "P,h \<turnstile>\<^sub>s sh \<surd>" using RedRInit by simp
+    moreover have "sh C = \<lfloor>(sfs, i)\<rfloor>" using RedRInit by simp
+    ultimately show "P,h,C \<turnstile>\<^sub>s sfs \<surd>" using shconfD by blast
+  qed
+  then show ?case using sh' by blast
+next
+  case (RInitInitThrow sh C sfs i sh' a D Cs e h l)
+  have sh': "sh' = sh(C \<mapsto> (sfs, Error))" by fact
+  have "P,h \<turnstile>\<^sub>s sh(C \<mapsto> (sfs, Error)) \<surd>"
+  proof(rule shconf_upd_obj)
+    show "P,h \<turnstile>\<^sub>s sh \<surd>" using RInitInitThrow by simp
+    moreover have "sh C = \<lfloor>(sfs, i)\<rfloor>" using RInitInitThrow by simp
+    ultimately show "P,h,C \<turnstile>\<^sub>s sfs \<surd>" using shconfD by blast
+  qed
+  then show ?case using sh' by blast
+next
+  case (RInitThrow sh C sfs i sh' a e' h l)
+  have sh': "sh' = sh(C \<mapsto> (sfs, Error))" by fact
+  have "P,h \<turnstile>\<^sub>s sh(C \<mapsto> (sfs, Error)) \<surd>"
+  proof(rule shconf_upd_obj)
+    show "P,h \<turnstile>\<^sub>s sh \<surd>" using RInitThrow by simp
+    moreover have "sh C = \<lfloor>(sfs, i)\<rfloor>" using RInitThrow by simp
+    ultimately show "P,h,C \<turnstile>\<^sub>s sfs \<surd>" using shconfD by blast
+  qed
+  then show ?case using sh' by blast
+qed(auto elim: WTrt.cases)

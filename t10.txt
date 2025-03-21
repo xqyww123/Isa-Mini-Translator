@@ -1,0 +1,38 @@
+proof -
+  define v::"'a blinop" where "v = Blinop w"
+  have "norm v = norm w"
+    unfolding v_def
+    apply transfer
+    by (simp add: bounded_linear_Blinfun_apply norm_blinfun.rep_eq)
+  with assms have "norm v < 1" by simp
+  from linear_inverse_blinop_lemma[OF this]
+  have v: "(\<Sum>n. (- 1) ^ n *\<^sub>R v ^ n) * (1 + v) = 1"
+    "(1 + v) * (\<Sum>n. (- 1) ^ n *\<^sub>R v ^ n) = 1"
+    "norm ((\<Sum>n. (- 1) ^ n *\<^sub>R v ^ n) - 1 + v) \<le> (norm v)\<^sup>2 / (1 - norm v)"
+    by auto
+  define J::"'a blinop" where "J = (\<Sum>n. (- 1) ^ n *\<^sub>R v ^ n)"
+  define I::"'a \<Rightarrow>\<^sub>L 'a" where "I = Blinfun J"
+  have "Blinfun (blinop_apply J) - 1\<^sub>L + w = Rep_blinop (J - 1 + Blinop (blinfun_apply w))"
+    by transfer' (auto simp: blinfun_apply_inverse)
+  then have ne: "norm (Blinfun (blinop_apply J) - 1\<^sub>L + w) =
+    norm (J - 1 + Blinop (blinfun_apply w))"
+    by (auto simp: norm_blinfun_def norm_blinop_def)
+  from v have
+    "I o\<^sub>L (1\<^sub>L + w) = 1\<^sub>L" "(1\<^sub>L + w) o\<^sub>L I = 1\<^sub>L"
+    "norm (I - 1\<^sub>L + w) \<le> (norm w)\<^sup>2/(1 - norm (w))"
+      apply (auto simp: I_def J_def[symmetric])
+    unfolding v_def
+      apply (auto simp: blinop.bounded_linear_right bounded_linear_Blinfun_apply
+        intro!: blinfun_eqI)
+    subgoal by transfer
+       (auto simp: blinfun_ext blinfun.bilinear_simps bounded_linear_Blinfun_apply)
+    subgoal
+      by transfer (auto simp: Transfer.Rel_def
+          blinfun_ext blinfun.bilinear_simps bounded_linear_Blinfun_apply)
+    subgoal
+      apply (auto simp: ne)
+      apply transfer
+      by (auto simp: norm_blinfun_def bounded_linear_Blinfun_apply)
+    done
+  then show ?thesis ..
+qed

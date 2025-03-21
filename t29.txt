@@ -1,0 +1,53 @@
+proof(induct rule:red_reds_inducts)
+  case TryRed then show ?case
+    by(simp del:fun_upd_apply add:hyperset_defs)
+      (blast dest:red_lcl_incr)+
+next
+  case BinOpRed1 then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case BinOpRed2 then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case LAssRed then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case FAssRed1 then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case FAssRed2 then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case CallObj then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case CallParams then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case BlockRedNone then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case BlockRedSome then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case InitBlockRed then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case SeqRed then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case CondRed then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case RedCondT then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case RedCondF then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case ListRed1 then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+next
+  case ListRed2 then show ?case
+    by(auto simp del:fun_upd_apply simp:hyperset_defs)
+qed (simp_all del:fun_upd_apply add:hyperset_defs)

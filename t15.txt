@@ -1,0 +1,79 @@
+  using assms(4)
+proof (induct arbitrary: p q rule: plays_for_0strategy.induct[OF assms(4)])
+  case 1
+  fix p q
+  assume \<open>hd [initial] = AttackerNode p q\<close>
+  hence \<open>p = p0\<close> \<open>q = q0\<close> using assms(3) by auto
+  thus \<open>R p q\<close> using assms(1) by simp
+next
+  case 1
+  fix p q
+  assume \<open>1 < length [initial]\<close>
+  hence False by auto
+  thus \<open>R p q\<close>  ..
+next
+  case (2 n0 play)
+  hence n0play_is_play: \<open>n0 # play \<in> plays initial\<close> using strategy0_plays_subset by blast
+  fix p q
+  assume subassms:
+    \<open>hd (strategy_from_coupleddsim R (n0 # play) # n0 # play) = AttackerNode p q\<close>
+    \<open>strategy_from_coupleddsim R (n0 # play) # n0 # play
+      \<in> plays_for_0strategy (strategy_from_coupleddsim R) initial\<close>
+  then obtain pi qi where 
+      piqi_def: \<open>hd (play) = AttackerNode pi qi\<close>
+        \<open>cs_game_moves (AttackerNode pi qi) n0\<close> \<open>play \<noteq> []\<close>
+    using defender_preceded_by_attacker n0play_is_play `cs_game_defender_node n0` assms(3) by blast
+  hence \<open>R pi qi\<close> using 2(1,3) by simp
+  have \<open>(\<exists> a . n0 = (DefenderStepNode a p qi) \<and> \<not> tau a \<and> pi \<longmapsto>a p)
+    \<or> (n0 = (DefenderCouplingNode pi qi))\<close>
+    using piqi_def(2) 2(4,5) subassms(1)
+    using cs_game_defender_node.elims(2) cs_game_moves.simps(1,3)
+      cs_game_moves.simps(4) list.sel(1)
+    by metis
+  thus \<open>R p q\<close>
+  proof safe
+    fix a
+    assume n0_def: \<open>n0 = DefenderStepNode a p qi\<close> \<open>\<not> tau a\<close> \<open>pi \<longmapsto>a p\<close>
+    have \<open>strategy_from_coupleddsim R (n0 # play) =
+        (AttackerNode p (SOME q1 . R p q1 \<and> qi =\<rhd>a q1))\<close>
+      unfolding n0_def(1) by auto
+    with subassms(1) have q_def: \<open>q = (SOME q1. R p q1 \<and> qi =\<rhd>a  q1)\<close> by auto
+    have \<open>\<exists> qii . R p qii \<and> qi =\<rhd>a qii\<close>
+      using n0_def(2,3) `R pi qi` `coupled_delay_simulation R`
+      unfolding coupled_delay_simulation_def delay_simulation_def by blast
+    from someI_ex[OF this] show \<open>R p q\<close> unfolding q_def by blast
+  next
+    assume n0_def: \<open>n0 = DefenderCouplingNode pi qi\<close>
+    have \<open>strategy_from_coupleddsim R (n0 # play) =
+        (AttackerNode (SOME q1 . R q1 pi \<and> qi \<longmapsto>* tau q1) pi)\<close>
+      unfolding n0_def(1) by auto
+    with subassms(1) have qp_def:
+      \<open>p = (SOME q1 . R q1 pi \<and> qi \<longmapsto>* tau q1)\<close> \<open>q = pi\<close> by auto
+    have \<open>\<exists> q1 . R q1 pi \<and> qi \<longmapsto>* tau q1\<close>
+      using n0_def `R pi qi` `coupled_delay_simulation R`
+      unfolding coupled_delay_simulation_def by blast
+    from someI_ex[OF this] show \<open>R p q\<close> unfolding qp_def by blast
+  qed
+next
+  case (2 n0 play)
+  fix p q
+  assume \<open>hd (tl (strategy_from_coupleddsim R (n0 # play) # n0 # play)) = AttackerNode p q\<close>
+  hence False using 2(4) by auto
+  thus \<open>R p q\<close> ..
+next
+  case (3 n1 play n1')
+  fix p q
+  assume \<open>hd (n1' # n1 # play) = AttackerNode p q\<close>
+  then obtain p1 a where n1_spec: \<open>n1 = AttackerNode p1 q\<close> \<open>p1 \<longmapsto>a p\<close> \<open>tau a\<close>
+   using 3 list.sel(1) 
+   by (metis cs_game_defender_node.elims(3) simulation_internal_attacker_move)
+  then have \<open>R p1 q\<close> using 3 by auto
+  thus \<open>R p q\<close> 
+    using  n1_spec(2,3) \<open>coupled_delay_simulation R\<close>
+    unfolding coupled_delay_simulation_def delay_simulation_def by auto
+next
+  case (3 n1 play n1')
+  fix p q
+  assume \<open>hd (tl (n1' # n1 # play)) = AttackerNode p q\<close>
+  thus \<open>R p q\<close> using 3(1,2) by auto
+qed

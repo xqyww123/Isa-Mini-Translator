@@ -1,0 +1,20 @@
+proof(cases "val_of e")
+  case None show ?thesis
+  proof(cases "lass_val_of e")
+    case lNone: None show ?thesis
+    proof(cases "lass_val_of e'")
+      case lNone': None
+      then show ?thesis using None assms lNone
+        by(auto dest: val_of_spec simp: bconf_def option.distinct(1))
+    next
+      case (Some a)
+      then show ?thesis using None assms lNone by(auto dest: lass_val_of_spec simp: bconf_def)
+    qed
+  next
+    case (Some a)
+    then show ?thesis using None assms by(auto dest: lass_val_of_spec)
+  qed
+next
+  case (Some a)
+  then show ?thesis using assms by(auto dest: val_of_spec)
+qed

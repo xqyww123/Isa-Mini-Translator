@@ -1,0 +1,54 @@
+  unfolding sound_0strategy_def
+proof clarify
+  fix n0 play
+  assume subassms:
+    \<open>n0 # play \<in> plays_for_0strategy(strategy_from_coupleddsim R) initial\<close>
+    \<open>cs_game_defender_node n0\<close>
+  then obtain pi qi where
+      piqi_def: \<open>hd (play) = AttackerNode pi qi\<close>
+        \<open>cs_game_moves (AttackerNode pi qi) n0\<close> \<open>play \<noteq> []\<close>
+    using defender_preceded_by_attacker `cs_game_defender_node n0` assms(3)
+      strategy0_plays_subset by blast
+  hence \<open>R pi qi\<close>
+    using strategy_from_coupleddsim_retains_coupledsim[OF assms] list.sel subassms by auto
+  have \<open>(\<exists> a p . n0 = (DefenderStepNode a p qi) \<and> pi \<longmapsto>a p)
+    \<or> (n0 = (DefenderCouplingNode pi qi))\<close>
+    by (metis cs_game_defender_node.elims(2)
+        coupling_challenge simulation_visible_challenge piqi_def(2) subassms(2))
+  thus \<open>cs_game_moves n0 (strategy_from_coupleddsim R (n0 # play))\<close>
+  proof safe
+    fix a p
+    assume dsn:
+      \<open>pi \<longmapsto>a  p\<close>
+      \<open>n0 = DefenderStepNode a p qi\<close>
+    hence qi_spec:
+      \<open>(strategy_from_coupleddsim R (n0 # play)) =
+        AttackerNode p (SOME q1 . R p q1 \<and> qi =\<rhd>a q1)\<close>
+      by simp
+    then obtain qii where qii_spec:
+      \<open>AttackerNode p (SOME q1 . R p q1 \<and> qi =\<rhd>a q1) = AttackerNode p qii\<close> by blast
+    have \<open>\<exists> qii . R p qii \<and> qi =\<rhd>a qii\<close>
+      using dsn `R pi qi` `coupled_delay_simulation R` steps.refl 
+      unfolding coupled_delay_simulation_def delay_simulation_def by blast
+    from someI_ex[OF this] have \<open>R p qii \<and> qi =\<rhd>a qii\<close> using qii_spec by blast
+    thus \<open>cs_game_moves (DefenderStepNode a p qi)
+          (strategy_from_coupleddsim R (DefenderStepNode a p qi # play))\<close>
+      using qi_spec qii_spec unfolding dsn(2) by auto
+  next \<comment>\<open>coupling quite analogous.\<close>
+    assume dcn:
+      \<open>n0 = DefenderCouplingNode pi qi\<close>
+    hence qi_spec:
+      \<open>(strategy_from_coupleddsim R (n0 # play)) =
+      AttackerNode (SOME q1 . R q1 pi \<and> qi \<longmapsto>* tau q1) pi\<close>
+      by simp
+    then obtain qii where qii_spec:
+      \<open>AttackerNode (SOME q1 . R q1 pi \<and> qi \<longmapsto>* tau q1) pi = AttackerNode qii pi\<close> by blast
+    have \<open>\<exists> qii . R qii pi \<and> qi \<longmapsto>* tau qii\<close>
+      using dcn `R pi qi` `coupled_delay_simulation R`
+      unfolding coupled_delay_simulation_def by blast
+    from someI_ex[OF this] have \<open>R qii pi \<and> qi \<longmapsto>* tau qii\<close> using qii_spec by blast
+    thus \<open>cs_game_moves (DefenderCouplingNode pi qi)
+        (strategy_from_coupleddsim R (DefenderCouplingNode pi qi # play))\<close>
+      using qi_spec qii_spec unfolding dcn by auto
+  qed
+qed

@@ -1,0 +1,137 @@
+proof (simp add: WHATWHERE_Secure_def, auto)
+  fix d PP
+    
+  from uniPPspawn have pp_difference: "\<iota> \<notin> set (PPV V)"
+    by (simp add: unique_PPc_def)
+  
+  \<comment> \<open>Step 1\<close>
+  from WWs_threads obtain R' where R'assump:
+    "SdlHPPB d PP R' \<and> (V,V) \<in> R'"
+    by (simp add: WHATWHERE_Secure_def, auto)
+
+  define R where "R = {(V',V''). (V',V'') \<in> R' \<and> set (PPV V') \<subseteq> set (PPV V)
+    \<and> set (PPV V'') \<subseteq> set (PPV V)}"
+
+  from R'assump R_def SdlHPPB_restricted_on_PP_is_SdlHPPB
+  have SdlHPPR: "SdlHPPB d PP R"
+    by force
+
+  \<comment> \<open>Step 2\<close>
+  define R0 where "R0 = {(sp1,sp2). \<exists>\<iota>' \<iota>'' V' V''. 
+    sp1 = [spawn\<^bsub>\<iota>'\<^esub> V'] \<and> sp2 = [spawn\<^bsub>\<iota>''\<^esub> V'']
+    \<and> \<iota>' \<notin> set (PPV V) \<and> \<iota>'' \<notin> set (PPV V) \<and> (V',V'') \<in> R}"
+
+  with R_def R'assump pp_difference have inR0: 
+    "([spawn\<^bsub>\<iota>\<^esub> V],[spawn\<^bsub>\<iota>\<^esub> V]) \<in> R0"
+    by auto
+    
+  \<comment> \<open>Step 3\<close>
+  from R0_def R_def R'assump have "Domain R0 \<inter> Domain R = {}"
+    by auto
+
+  with commonArefl_subset_commonDomain
+  have Areflassump: "Arefl R0 \<inter> Arefl R \<subseteq> {[]}"
+    by force
+  
+  \<comment> \<open>Step 4\<close>
+  have disjuptoR0:
+    "disj_dlHPP_Bisimulation_Up_To_R' d PP R R0"
+    proof (simp add: disj_dlHPP_Bisimulation_Up_To_R'_def, auto)
+      from SdlHPPR show "SdlHPPB d PP R"
+        by auto
+    next
+      from SdlHPPR have symR: "sym R" 
+        by (simp add: Strong_dlHPP_Bisimulation_def)
+      with R0_def show "sym R0" 
+        by (simp add: sym_def, auto)
+    next  
+      from SdlHPPR have transR: "trans R"
+        by (simp add: Strong_dlHPP_Bisimulation_def)
+      with R0_def show "trans R0"
+        proof -
+          {
+          fix V1 V2 V3
+          assume inR1: "(V1,V2) \<in> R0"
+          assume inR2: "(V2,V3) \<in> R0"
+          from inR1 R0_def obtain W W' \<iota> \<iota>' where p1: "V1 = [spawn\<^bsub>\<iota>\<^esub> W] 
+            \<and> V2 = [spawn\<^bsub>\<iota>'\<^esub> W'] \<and> \<iota> \<notin> set (PPV V) \<and> \<iota>' \<notin> set (PPV V)
+            \<and> (W,W') \<in> R"
+            by auto
+          with inR2 R0_def obtain W'' \<iota>'' where p2: "V3 = [spawn\<^bsub>\<iota>''\<^esub> W'']
+            \<and> \<iota>'' \<notin> set (PPV V) \<and> (W',W'') \<in> R"
+            by auto
+          from p1 p2 transR have "(W,W'') \<in> R" 
+            by (simp add: trans_def, auto)
+          with p1 p2 R0_def have "(V1,V3) \<in> R0"
+            by auto
+          }
+          thus ?thesis unfolding trans_def by blast
+        qed
+    next
+      fix V' V''
+      from SdlHPPR have eqlenR: "(V',V'') \<in> R \<Longrightarrow> length V' = length V''"
+        by (simp add: Strong_dlHPP_Bisimulation_def, auto)
+      with R0_def show "(V',V'') \<in> R0 \<Longrightarrow> length V' = length V''"
+        by auto
+    next
+      fix V' V'' i
+      assume inR0: "(V',V'') \<in> R0"
+      assume irange: "i < length V'"
+      from inR0 R0_def obtain \<iota>' \<iota>'' W' W'' 
+        where R0pair1: "V' = [spawn\<^bsub>\<iota>'\<^esub> W'] \<and> V'' = [spawn\<^bsub>\<iota>''\<^esub> W'']"
+        by auto
+      {
+        fix m
+        from nextmem_exists_and_unique obtain m' where spawnnextmem:
+          "\<exists>p \<alpha>. \<langle>spawn\<^bsub>\<iota>'\<^esub> W',m\<rangle> \<rightarrow>\<lhd>\<alpha>\<rhd> \<langle>p,m'\<rangle> 
+          \<and> (\<forall>m''. (\<exists>p \<alpha>. \<langle>spawn\<^bsub>\<iota>'\<^esub> W',m\<rangle> \<rightarrow>\<lhd>\<alpha>\<rhd> \<langle>p,m''\<rangle>) \<longrightarrow> m'' = m')"
+          by force
+      
+        hence "m = m'"
+          by (metis MWLsSteps_det.spawn)
+
+        with spawnnextmem have eqnextmem: 
+          "\<lbrakk>spawn\<^bsub>\<iota>'\<^esub> W'\<rbrakk>(m) = m"
+          by (simp add: NextMem_def, auto)
+      }
+
+      with R0pair1 irange show "NDC d (V'!i)"
+        by (simp add: NDC_def)
+    next
+      fix V' V'' i m1 m1' m2 \<alpha> p
+      assume inR0: "(V',V'') \<in> R0"
+      assume irange: "i < length V'"
+      assume step: "\<langle>V'!i,m1\<rangle> \<rightarrow>\<lhd>\<alpha>\<rhd> \<langle>p,m2\<rangle>"
+      assume dhequal: "m1 \<sim>\<^bsub>d,htchLocSet PP\<^esub> m1'"
+
+      from inR0 R0_def obtain \<iota>' \<iota>'' W' W'' 
+        where R0pair2: "V' = [spawn\<^bsub>\<iota>'\<^esub> W'] 
+        \<and> V'' = [spawn\<^bsub>\<iota>''\<^esub> W''] \<and> (W',W'') \<in> R"
+        by auto
+      
+      with step irange
+      have conc_step1: "\<alpha> = W' \<and> p = None \<and> m2 = m1"
+        by (simp, metis MWLsSteps_det_cases(6))
+        
+      from R0pair2 irange 
+      obtain p' \<alpha>' m2' where conc_step2: "\<langle>V''!i,m1'\<rangle> \<rightarrow>\<lhd>\<alpha>'\<rhd> \<langle>p',m2'\<rangle>
+        \<and> p' = None \<and> \<alpha>' = W'' \<and> m2' = m1'"
+        by (simp, metis MWLsSteps_det.spawn) 
+     
+      with R0pair2 conc_step1 dhequal irange
+      show "\<exists>p' \<alpha>' m2'. \<langle>V''!i,m1'\<rangle> \<rightarrow>\<lhd>\<alpha>'\<rhd> \<langle>p',m2'\<rangle> \<and>
+        stepResultsinR p p' (R0 \<union> R) \<and>
+        ((\<alpha>,\<alpha>') \<in> R0 \<or> (\<alpha>,\<alpha>') \<in> R) \<and>
+        dhequality_alternative d PP (pp (V'!i)) m2 m2'"
+        by (simp add: stepResultsinR_def 
+          dhequality_alternative_def, auto)       
+    qed
+  \<comment> \<open>Step 5\<close>
+  with Areflassump Up_To_Technique
+  have "SdlHPPB d PP (R0 \<union> R)"
+    by auto
+      
+  with inR0 show "\<exists>R. SdlHPPB d PP R \<and>
+    ([spawn\<^bsub>\<iota>\<^esub> V],[spawn\<^bsub>\<iota>\<^esub> V]) \<in> R"  
+    by auto
+qed

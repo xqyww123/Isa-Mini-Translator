@@ -1,0 +1,36 @@
+proof (rule openI)
+  fix u0::"'a \<Rightarrow>\<^sub>L 'b"
+  assume "u0 \<in> invertibles_blinfun"
+  then obtain u0i where u0i: "u0 o\<^sub>L u0i = 1\<^sub>L" "u0i o\<^sub>L u0 = 1\<^sub>L"
+    by (auto simp: invertibles_blinfun_def)
+  then have [simp]: "u0i \<noteq> 0"
+    apply (auto)
+    by (metis one_blinop.abs_eq zero_blinop.abs_eq zero_neq_one)
+  let ?e = "inverse (norm u0i)"
+  show "\<exists>e>0. ball u0 e \<subseteq> invertibles_blinfun"
+    apply (clarsimp intro!: exI[where x = ?e] simp: invertibles_blinfun_def)
+    subgoal premises prems for u0s
+    proof -
+      define s where "s = u0s - u0"
+      have u0s: "u0s = u0 + s"
+        by (auto simp: s_def)
+      have "norm (u0i o\<^sub>L s) < 1"
+        using prems by (auto simp: dist_norm u0s
+        divide_simps ac_simps intro!: le_less_trans[OF norm_blinfun_compose])
+      from linear_inverse_blinfun_lemma[OF this]
+      obtain I where I:
+        "I o\<^sub>L 1\<^sub>L + (u0i o\<^sub>L s) = 1\<^sub>L"
+        "1\<^sub>L + (u0i o\<^sub>L s) o\<^sub>L I = 1\<^sub>L"
+        "norm (I - 1\<^sub>L + (u0i o\<^sub>L s)) \<le> (norm (u0i o\<^sub>L s))\<^sup>2 / (1 - norm (u0i o\<^sub>L s))"
+        by auto
+      have u0s_eq: "u0s = u0 o\<^sub>L (1\<^sub>L + (u0i o\<^sub>L s))"
+        using u0i
+        by (auto simp: s_def blinfun.bilinear_simps blinfun_ext)
+      show ?thesis
+        apply (rule exI[where x="I o\<^sub>L u0i"])
+        using I u0i
+        apply (auto simp: u0s_eq)
+        by (auto simp:  algebra_simps blinfun_ext blinfun.bilinear_simps)
+    qed
+    done
+  qed

@@ -1,0 +1,101 @@
+proof(induct rule:WCFG_induct)
+  case (WCFG_SeqFirst c\<^sub>1 n et n' c\<^sub>2)
+  note IH = \<open>\<lbrakk>\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V; pred et s\<rbrakk> \<Longrightarrow> pred et s'\<close>
+  from \<open>\<forall>V\<in>Uses (c\<^sub>1;; c\<^sub>2) n. s V = s' V\<close> have "\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V"
+    by auto(drule Labels_Seq1[of _ _ _ c\<^sub>2],erule_tac x="V" in allE,auto)
+  from IH[OF this \<open>pred et s\<close>] show ?case .
+next
+  case (WCFG_SeqConnect c\<^sub>1 n et c\<^sub>2)
+  note IH = \<open>\<lbrakk>\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V; pred et s\<rbrakk> \<Longrightarrow> pred et s'\<close>
+  from \<open>\<forall>V\<in>Uses (c\<^sub>1;; c\<^sub>2) n. s V = s' V\<close> have "\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V"
+    by auto(drule Labels_Seq1[of _ _ _ c\<^sub>2],erule_tac x="V" in allE,auto)
+  from IH[OF this \<open>pred et s\<close>] show ?case .
+next
+  case (WCFG_SeqSecond c\<^sub>2 n et n' c\<^sub>1)
+  note IH = \<open>\<lbrakk>\<forall>V\<in>Uses c\<^sub>2 n. s V = s' V; pred et s\<rbrakk> \<Longrightarrow> pred et s'\<close>
+  from \<open>\<forall>V\<in>Uses (c\<^sub>1;; c\<^sub>2) (n \<oplus> #:c\<^sub>1). s V = s' V\<close>
+  have "\<forall>V\<in>Uses c\<^sub>2 n. s V = s' V" by(auto,blast dest:Labels_Seq2)
+  from IH[OF this \<open>pred et s\<close>] show ?case .
+next
+  case (WCFG_CondTrue b c\<^sub>1 c\<^sub>2)
+  from \<open>\<forall>V\<in>Uses (if (b) c\<^sub>1 else c\<^sub>2) (_0_). s V = s' V\<close> 
+  have all:"\<forall>V. labels (if (b) c\<^sub>1 else c\<^sub>2) 0 (if (b) c\<^sub>1 else c\<^sub>2) \<and> 
+            V \<in> rhs (if (b) c\<^sub>1 else c\<^sub>2) \<longrightarrow> (s V = s' V)"
+    by fastforce
+  obtain v' where [simp]:"v' = true" by simp
+  with \<open>pred (\<lambda>s. interpret b s = Some true)\<^sub>\<surd> s\<close>
+  have "interpret b s = Some v'" by simp
+  have "labels (if (b) c\<^sub>1 else c\<^sub>2) 0 (if (b) c\<^sub>1 else c\<^sub>2)" by(rule Labels_Base)
+  with all have "\<forall>V \<in> rhs_aux b. s V = s' V" by simp
+  with \<open>interpret b s = Some v'\<close> have "interpret b s' = Some v'"
+    by(rule rhs_interpret_eq)
+  thus ?case by simp
+next
+  case (WCFG_CondFalse b c\<^sub>1 c\<^sub>2)
+  from \<open>\<forall>V\<in>Uses (if (b) c\<^sub>1 else c\<^sub>2) (_0_). s V = s' V\<close>
+  have all:"\<forall>V. labels (if (b) c\<^sub>1 else c\<^sub>2) 0 (if (b) c\<^sub>1 else c\<^sub>2) \<and> 
+              V \<in> rhs (if (b) c\<^sub>1 else c\<^sub>2) \<longrightarrow> (s V = s' V)"
+    by fastforce
+  obtain v' where [simp]:"v' = false" by simp
+  with \<open>pred (\<lambda>s. interpret b s = Some false)\<^sub>\<surd> s\<close> 
+  have "interpret b s = Some v'" by simp
+  have "labels (if (b) c\<^sub>1 else c\<^sub>2) 0 (if (b) c\<^sub>1 else c\<^sub>2)" by(rule Labels_Base)
+  with all have "\<forall>V \<in> rhs_aux b. s V = s' V" by simp
+  with \<open>interpret b s = Some v'\<close> have "interpret b s' = Some v'"
+    by(rule rhs_interpret_eq)
+  thus ?case by simp
+next
+  case (WCFG_CondThen c\<^sub>1 n et n' b c\<^sub>2)
+  note IH = \<open>\<lbrakk>\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V; pred et s\<rbrakk> \<Longrightarrow> pred et s'\<close>
+  from \<open>\<forall>V\<in>Uses (if (b) c\<^sub>1 else c\<^sub>2) (n \<oplus> 1). s V = s' V\<close>
+  have "\<forall>V\<in>Uses c\<^sub>1 n. s V = s' V" by(auto,blast dest:Labels_CondTrue)
+  from IH[OF this \<open>pred et s\<close>] show ?case .
+next
+  case (WCFG_CondElse c\<^sub>2 n et n' b c\<^sub>1)
+  note IH = \<open>\<lbrakk>\<forall>V\<in>Uses c\<^sub>2 n. s V = s' V; pred et s\<rbrakk> \<Longrightarrow> pred et s'\<close>
+  from \<open>\<forall>V\<in>Uses (if (b) c\<^sub>1 else c\<^sub>2) (n \<oplus> #:c\<^sub>1 + 1). s V = s' V\<close>
+  have "\<forall>V\<in>Uses c\<^sub>2 n. s V = s' V"
+    by auto(drule Labels_CondFalse[of _ _ _ b c\<^sub>1],erule_tac x="V" in allE,
+       auto simp:add.assoc)
+  from IH[OF this \<open>pred et s\<close>] show ?case .
+next
+  case (WCFG_WhileTrue b c')
+  from \<open>\<forall>V\<in>Uses (while (b) c') (_0_). s V = s' V\<close>
+  have all:"\<forall>V. labels (while (b) c') 0 (while (b) c') \<and> 
+              V \<in> rhs (while (b) c') \<longrightarrow> (s V = s' V)"
+    by fastforce
+  obtain v' where [simp]:"v' = true" by simp
+  with \<open>pred (\<lambda>s. interpret b s = Some true)\<^sub>\<surd> s\<close>
+  have "interpret b s = Some v'" by simp
+  have "labels (while (b) c') 0 (while (b) c')" by(rule Labels_Base)
+  with all have "\<forall>V \<in> rhs_aux b. s V = s' V" by simp
+  with \<open>interpret b s = Some v'\<close> have "interpret b s' = Some v'"
+    by(rule rhs_interpret_eq)
+  thus ?case by simp
+next
+  case (WCFG_WhileFalse b c')
+  from \<open>\<forall>V\<in>Uses (while (b) c') (_0_). s V = s' V\<close>
+  have all:"\<forall>V. labels (while (b) c') 0 (while (b) c') \<and> 
+              V \<in> rhs (while (b) c') \<longrightarrow> (s V = s' V)"
+    by fastforce
+  obtain v' where [simp]:"v' = false" by simp
+  with \<open>pred (\<lambda>s. interpret b s = Some false)\<^sub>\<surd> s\<close>
+  have "interpret b s = Some v'" by simp
+  have "labels (while (b) c') 0 (while (b) c')" by(rule Labels_Base)
+  with all have "\<forall>V \<in> rhs_aux b. s V = s' V" by simp
+  with \<open>interpret b s = Some v'\<close> have "interpret b s' = Some v'"
+    by(rule rhs_interpret_eq)
+  thus ?case by simp
+next
+  case (WCFG_WhileBody c' n et n' b)
+  note IH = \<open>\<lbrakk>\<forall>V\<in>Uses c' n. s V = s' V; pred et s\<rbrakk> \<Longrightarrow> pred et s'\<close>
+  from \<open>\<forall>V\<in>Uses (while (b) c') (n \<oplus> 2). s V = s' V\<close> have "\<forall>V\<in>Uses c' n. s V = s' V"
+    by auto(drule Labels_WhileBody[of _ _ _ b],erule_tac x="V" in allE,auto)
+  from IH[OF this \<open>pred et s\<close>] show ?case .
+next
+  case (WCFG_WhileBodyExit c' n et b)
+  note IH = \<open>\<lbrakk>\<forall>V\<in>Uses c' n. s V = s' V; pred et s\<rbrakk> \<Longrightarrow> pred et s'\<close>
+  from \<open>\<forall>V\<in>Uses (while (b) c') (n \<oplus> 2). s V = s' V\<close> have "\<forall>V\<in>Uses c' n. s V = s' V"
+    by auto(drule Labels_WhileBody[of _ _ _ b],erule_tac x="V" in allE,auto)
+  from IH[OF this \<open>pred et s\<close>] show ?case .
+qed simp_all

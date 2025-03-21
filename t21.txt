@@ -1,0 +1,84 @@
+    proof -
+      let ?\<phi>a = "\<phi> (a, a) a"
+      have \<phi>a: "\<phi> (a, a) a \<in> Hom.set (a, a)" using ide_a Hom.\<phi>_mapsto by fastforce
+      have 1: "\<tau> b = S.mkArr (Hom.set (b, a)) (F.SET b) (\<tau>.FUN b)"
+        using ide_a b S.mkArr_Fun [of "\<tau> b"] Hom.set_map by auto
+      also have
+          "... = S.mkArr (Hom.set (b, a)) (F.SET b) (\<lambda>x. (F.FUN (\<psi> (b, a) x) (\<tau>.FUN a ?\<phi>a)))"
+      proof (intro S.mkArr_eqI')
+        show 2: "S.arr (S.mkArr (Hom.set (b, a)) (F.SET b) (\<tau>.FUN b))"
+          using ide_a b 1 S.mkArr_Fun [of "\<tau> b"] Hom.set_map by auto
+        show "\<And>x. x \<in> Hom.set (b, a) \<Longrightarrow> \<tau>.FUN b x = (F.FUN (\<psi> (b, a) x) (\<tau>.FUN a ?\<phi>a))"
+        proof -
+          fix x
+          assume x: "x \<in> Hom.set (b, a)"
+          let ?\<psi>x = "\<psi> (b, a) x"
+          have \<psi>x: "\<guillemotleft>?\<psi>x : b \<rightarrow> a\<guillemotright>"
+            using ide_a b x Hom.\<psi>_mapsto [of b a] by auto
+          show "\<tau>.FUN b x = (F.FUN (\<psi> (b, a) x) (\<tau>.FUN a ?\<phi>a))"
+          proof -
+            have "\<tau>.FUN b x = S.Fun (\<tau> b \<cdot>\<^sub>S Y a ?\<psi>x) ?\<phi>a"
+            proof -
+              have "\<tau>.FUN b x = \<tau>.FUN b ((\<phi> (b, a) o Cop.comp ?\<psi>x) a)"
+                using ide_a b x \<psi>x Hom.\<phi>_\<psi>
+                by (metis C.comp_cod_arr C.in_homE C.ide_dom Cop.comp_def comp_apply)
+              also have "... = (\<tau>.FUN b o (\<phi> (b, a) o Cop.comp ?\<psi>x o \<psi> (a, a))) ?\<phi>a"
+                using ide_a b C.ide_in_hom by simp
+              also have "... = S.Fun (\<tau> b \<cdot>\<^sub>S Y a ?\<psi>x) ?\<phi>a"
+              proof -
+                have "S.seq (\<tau> b) (Y a ?\<psi>x) \<and>
+                      \<tau> b \<cdot>\<^sub>S Y a ?\<psi>x =
+                         S.mkArr (Hom.set (a, a)) (F.SET b)
+                                 (\<tau>.FUN b o (\<phi> (b, a) \<circ> Cop.comp ?\<psi>x \<circ> \<psi> (a, a)))"
+                proof
+                  show "S.seq (\<tau> b) (Y a ?\<psi>x)"
+                    using \<psi>x \<tau>.is_natural_2 by fastforce
+                  show "\<tau> b \<cdot>\<^sub>S Y a ?\<psi>x =
+                           S.mkArr (Hom.set (a, a)) (F.SET b)
+                                   (\<tau>.FUN b o (\<phi> (b, a) \<circ> Cop.comp ?\<psi>x \<circ> \<psi> (a, a)))"
+                    by (metis 1 2 Cop.arrI Cop.hom_char S.comp_mkArr Y_ide_arr(2)
+                        \<psi>x ide_a preserves_arr)
+                qed
+                thus ?thesis
+                  using ide_a b x Hom.\<phi>_mapsto S.Fun_mkArr by force
+              qed
+              finally show ?thesis by auto
+            qed
+            also have "... = S.Fun (F ?\<psi>x \<cdot>\<^sub>S \<tau> a) ?\<phi>a"
+              using ide_a b \<psi>x \<tau>.naturality by force
+            also have "... = F.FUN ?\<psi>x (\<tau>.FUN a ?\<phi>a)"
+            proof -
+              have "restrict (S.Fun (F ?\<psi>x \<cdot>\<^sub>S \<tau> a)) (Hom.set (a, a))
+                               = restrict (F.FUN (\<psi> (b, a) x) o \<tau>.FUN a) (Hom.set (a, a))"
+              proof -
+                have "S.arr (F ?\<psi>x \<cdot>\<^sub>S \<tau> a) \<and>
+                      F ?\<psi>x \<cdot>\<^sub>S \<tau> a = S.mkArr (Hom.set (a, a)) (F.SET b) (F.FUN ?\<psi>x o \<tau>.FUN a)"
+                proof
+                  show 1: "S.seq (F ?\<psi>x) (\<tau> a)"
+                    using \<psi>x ide_a \<tau>.preserves_cod F.preserves_dom
+                    by (elim C.in_homE, auto)
+                  show "F ?\<psi>x \<cdot>\<^sub>S \<tau> a = S.mkArr (Hom.set (a, a)) (F.SET b) (F.FUN ?\<psi>x o \<tau>.FUN a)"
+                  proof -
+                    have "\<tau> a = S.mkArr (Hom.set (a, a)) (F.SET a) (\<tau>.FUN a)"
+                      using ide_a 1 S.mkArr_Fun [of "\<tau> a"] Hom.set_map by auto
+                    moreover have "F ?\<psi>x = S.mkArr (F.SET a) (F.SET b) (F.FUN ?\<psi>x)"
+                      using x \<psi>x 1 S.mkArr_Fun [of "F ?\<psi>x"] by fastforce
+                    ultimately show ?thesis
+                      using 1 S.comp_mkArr [of "Hom.set (a, a)" "F.SET a" "\<tau>.FUN a"
+                                               "F.SET b" "F.FUN ?\<psi>x"]
+                      by (elim S.seqE, auto)
+                  qed
+                qed
+                thus ?thesis by force
+              qed
+              thus "S.Fun (F (\<psi> (b, a) x) \<cdot>\<^sub>S \<tau> a) ?\<phi>a = F.FUN ?\<psi>x (\<tau>.FUN a ?\<phi>a)"
+                 using ide_a \<phi>a restr_eqE [of "S.Fun (F ?\<psi>x \<cdot>\<^sub>S \<tau> a)"
+                                              "Hom.set (a, a)" "F.FUN ?\<psi>x o \<tau>.FUN a"]
+                 by simp
+            qed
+            finally show ?thesis by simp
+          qed
+        qed
+      qed
+      finally show ?thesis by auto
+    qed

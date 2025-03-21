@@ -1,0 +1,24 @@
+proof (induct rule:red_reds_inducts)
+  case (RedNew h a C FDTs h' l sh es)
+  have new: "new_Addr h = Some a" and fields: "P \<turnstile> C has_fields FDTs"
+   and h': "h' = h(a\<mapsto>blank P C)"
+   and hconf: "P \<turnstile> h \<surd>" by fact+
+  from new have None: "h a = None" by(rule new_Addr_SomeD)
+  moreover have "P,h \<turnstile> blank P C \<surd>"
+    using fields by(rule oconf_blank)
+  ultimately show "P \<turnstile> h' \<surd>" using h' by(fast intro: hconf_new[OF hconf])
+next
+  case (RedFAss C F t D h a fs v l sh b')
+  let ?fs' = "fs((F,D)\<mapsto>v)"
+  have hconf: "P \<turnstile> h \<surd>" and ha: "h a = Some(C,fs)"
+   and wt: "P,E,h,sh \<turnstile> addr a\<bullet>F{D}:=Val v : T" by fact+
+  from wt ha obtain TF Tv where typeofv: "typeof\<^bsub>h\<^esub> v = Some Tv"
+    and has: "P \<turnstile> C has F,NonStatic:TF in D"
+    and sub: "P \<turnstile> Tv \<le> TF" by auto
+  have "P,h \<turnstile> (C, ?fs') \<surd>"
+  proof (rule oconf_fupd[OF has])
+    show "P,h \<turnstile> (C, fs) \<surd>" using hconf ha by(simp add:hconf_def)
+    show "P,h \<turnstile> v :\<le> TF" using sub typeofv by(simp add:conf_def)
+  qed
+  with hconf ha show "P \<turnstile> h(a\<mapsto>(C, ?fs')) \<surd>"  by (rule hconf_upd_obj)
+qed(auto elim: WTrt.cases)

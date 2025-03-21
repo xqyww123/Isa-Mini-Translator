@@ -1,0 +1,46 @@
+proof-
+  have "Ex (\<lambda>(e,hs). e > 0 \<and> length hs = k \<and>
+    (\<forall>h\<in>set hs. (\<lambda>x. h x) \<in> O(\<lambda>x. real x / ln (real x) powr (1+e))) \<and>
+    (\<forall>t\<in>set ts. \<forall>x\<ge>x\<^sub>1. t x \<ge> x\<^sub>0 \<and> t x < x) \<and>
+    (\<forall>i<k. \<forall>x\<ge>x\<^sub>1. (bs!i)*x + (hs!i) x = real ((ts!i) x)))"
+  proof-
+    from ts have A: "\<forall>i\<in>{..<k}. akra_bazzi_term x\<^sub>0 x\<^sub>1 (bs!i) (ts!i)" by (auto simp: length_bs)
+    hence "\<exists>e h. (\<forall>i<k. e i > 0 \<and>
+             (\<lambda>x. h i x) \<in> O(\<lambda>x. real x / ln (real x) powr (1+e i)) \<and>
+             (\<forall>x\<ge>x\<^sub>1. (ts!i) x \<ge> x\<^sub>0 \<and> (ts!i) x < x) \<and>
+             (\<forall>i<k. \<forall>x\<ge>x\<^sub>1. (bs!i)*real x + h i x = real ((ts!i) x)))"
+             unfolding akra_bazzi_term_def
+      by (subst (asm) bchoice_iff, subst (asm) bchoice_iff) blast
+    then guess ee :: "_ \<Rightarrow> real" and hh :: "_ \<Rightarrow> nat \<Rightarrow> real"
+      by (elim exE conjE) note eh = this
+    define e where "e = Min {ee i |i. i < k}"
+    define hs where "hs = map hh (upt 0 k)"
+    have e_pos: "e > 0" unfolding e_def using eh k_not_0 by (subst Min_gr_iff) auto
+    moreover have "length hs = k" unfolding hs_def by (simp_all add: length_ts)
+    moreover have hs_growth: "\<forall>h\<in>set hs. (\<lambda>x. h x) \<in> O(\<lambda>x. real x / ln (real x) powr (1+e))"
+    proof
+      fix h assume "h \<in> set hs"
+      then obtain i where t: "i < k" "h = hh i" unfolding hs_def by force
+      hence "(\<lambda>x. h x) \<in> O(\<lambda>x. real x / ln (real x) powr (1+ee i))" using eh by blast
+      also from t k_not_0 have "e \<le> ee i" unfolding e_def by (subst Min_le_iff) auto
+      hence "(\<lambda>x::nat. real x / ln (real x) powr (1+ee i)) \<in> O(\<lambda>x. real x / ln (real x) powr (1+e))"
+        by (intro bigo_real_nat_transfer) auto
+      finally show "(\<lambda>x. h x) \<in> O(\<lambda>x. real x / ln (real x) powr (1+e))" .
+    qed
+    moreover have "\<forall>t\<in>set ts. (\<forall>x\<ge>x\<^sub>1. t x \<ge> x\<^sub>0 \<and> t x < x)"
+    proof (rule ballI)
+      fix t assume "t \<in> set ts"
+      then obtain i where "i < k" "t = ts!i" using length_ts by (subst (asm) in_set_conv_nth) auto
+      with eh show "\<forall>x\<ge>x\<^sub>1. t x \<ge> x\<^sub>0 \<and> t x < x" unfolding hs_def by force
+    qed
+    moreover have "\<forall>i<k. \<forall>x\<ge>x\<^sub>1. (bs!i)*x + (hs!i) x = real ((ts!i) x)"
+    proof (rule allI, rule impI)
+      fix i assume i: "i < k"
+      with eh show "\<forall>x\<ge>x\<^sub>1. (bs!i)*x + (hs!i) x = real ((ts!i) x)"
+        using length_ts unfolding hs_def by fastforce
+    qed
+    ultimately show ?thesis by blast
+  qed
+  from someI_ex[OF this, folded e_hs_def] show ?thesis
+    unfolding e_def hs_def by (intro conjI) fastforce+
+qed

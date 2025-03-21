@@ -1,0 +1,131 @@
+proof (induct rule:red_reds_inducts)
+  case (RedSFAssNonStatic C F t D v a a b b) then show ?case
+    using has_field_fun[of P C F NonStatic] by (auto simp: bconf_def)
+next
+  case (CastRed e a a b b e' a a b b' C) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (BinOpRed1 e h l sh b e' h' l' sh' b' bop e\<^sub>2) show ?case
+  proof(cases b')
+    case True with BinOpRed1 val_of_spec show ?thesis
+    proof(cases "val_of e") qed(simp,fast)
+  next
+    case False then show ?thesis by (simp add: bconf_def)
+  qed
+next
+case (BinOpRed2 e a a b b e' a a b b' v\<^sub>1 bop) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (LAssRed e a a b b e' a a b b' V) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (FAccRed e a a b b e' a a b b' F D) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (RedSFAccNonStatic C F t D h l sh b) then show ?case
+    using has_field_fun[of P C F NonStatic] by (auto simp: bconf_def)
+next
+  case (FAssRed1 e h l sh b e' h' l' sh' b' F D e\<^sub>2) show ?case
+  proof(cases b')
+    case True with FAssRed1 val_of_spec show ?thesis
+    proof(cases "val_of e'")qed((simp,fast)+)
+  next
+    case False then show ?thesis by(simp add: bconf_def)
+  qed
+next
+  case (FAssRed2 e a a b b e' a a b b' v F D) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (SFAssRed e h l sh b e' h' l' sh' b' C F D) then show ?case
+  proof(cases b') qed(fastforce simp: bconf_def val_no_step)+
+next
+  case (CallObj e h l sh b e' h' l' sh' b' M es) show ?case
+  proof(cases b')
+    case True with CallObj val_of_spec show ?thesis
+    proof(cases "val_of e'")qed((simp,fast)+)
+  next
+    case False then show ?thesis by(simp add: bconf_def)
+  qed
+next
+  case (CallParams es a a b b es' a a b b' v M) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (SCallParams es h l sh b es' h' l' sh' b' C M) show ?case
+  proof(cases b')
+    case b': True show ?thesis
+    proof(cases "map_vals_of es'")
+      case None
+      then show ?thesis using SCallParams b' vals_no_step
+      proof(cases "map_vals_of es")qed(clarsimp,fast)
+    next
+      case f: Some
+      then show ?thesis using SCallParams b' vals_no_step
+      proof(cases "map_vals_of es")qed(clarsimp,fast)
+    qed
+  next
+    case False then show ?thesis by(simp add: bconf_def)
+  qed
+next
+  case (SCallInitDoneRed C M Ts T pns body D sh sfs vs h l)
+    then show ?case by(auto simp: bconf_def initPD_def) (rule_tac x=D in exI, auto)+
+next
+  case (RedSCallNonStatic C M Ts T a b D vs h l sh b) then show ?case
+    using sees_method_fun[of P C M NonStatic] by (auto simp: bconf_def)
+next
+  case (BlockRedNone e h l V sh b e' h' l' sh' b' T) show ?case
+  proof(cases "assigned V e'")
+    case True
+    then obtain v e2 where "e' = V := Val v;;e2" by(clarsimp simp: assigned_def)
+    then show ?thesis using BlockRedNone by(clarsimp simp: bconf_def)
+  next
+    case False then show ?thesis using BlockRedNone by simp
+  qed
+next
+  case (BlockRedSome e h l V sh b e' h' l' sh' b' v T) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (InitBlockRed e h l V v sh b e' h' l' sh' b' v' T) show ?case
+  proof(cases b')
+    case True
+    then show ?thesis using InitBlockRed by (simp add: assigned_def)
+  next
+    case False then show ?thesis by(simp add: bconf_def)
+  qed
+next
+  case (RedBlock V T u)
+  then have "\<not>assigned V (Val u)" by(clarsimp simp: assigned_def)
+  then show ?case using RedBlock by(simp add: bconf_def)
+next
+  case (SeqRed e h l sh b e' h' l' sh' b' e\<^sub>2)
+  have "iconf sh e"
+  proof(cases "lass_val_of e")
+    case (Some a) show ?thesis by(rule lass_val_of_iconf[OF Some])
+  next
+    case None then show ?thesis using SeqRed by(auto dest: val_of_spec)
+  qed
+  then show ?case using SeqRed Seq_bconf_preserve_aux by simp
+next
+  case (CondRed e a a b b e' a a b b' e\<^sub>1 e\<^sub>2) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (ThrowRed e a a b b e' a a b b') then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (TryRed e a a b b e' a a b b' C V e\<^sub>2) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (ListRed1 e h l sh b e' h' l' sh' b' es)
+  with val_of_spec show ?case
+  proof(cases b') qed((clarsimp,fast),simp add: bconfs_def)
+next
+  case (RedInit C b' e X Y b b'')
+  then show ?case
+   by(auto simp: bconf_def icheck_ss_exp icheck_init_class icheck_curr_init)
+next
+  case (RInitRed e a a b b e' a a b b' C Cs e\<^sub>0) then show ?case
+  proof(cases b') qed(simp, simp add: bconf_def)
+next
+  case (BlockThrow V T a)
+  then have "\<not>assigned V (Throw a)" by(simp add: assigned_def)
+  then show ?case using BlockThrow by simp
+qed(simp_all, auto simp: bconf_def initPD_def)

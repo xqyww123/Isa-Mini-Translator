@@ -1,0 +1,41 @@
+proof (induct rule:red_reds_inducts)
+  case BinOpRed1 thus ?case by (auto elim!: D_mono[OF red_lA_incr])
+next
+  case FAssRed1 thus ?case by (auto elim!: D_mono[OF red_lA_incr])
+next
+  case CallObj thus ?case by (auto elim!: Ds_mono[OF red_lA_incr])
+next
+  case RedCall thus ?case
+    by (auto dest!:sees_wf_mdecl[OF wf] simp:wf_mdecl_def hyperset_defs elim!:D_mono')
+next
+  case RedSCall thus ?case
+    by (auto dest!:sees_wf_mdecl[OF wf] simp:wf_mdecl_def hyperset_defs elim!:D_mono')
+next
+  case SCallInitRed
+  then show ?case by(auto simp:hyperset_defs Ds_Vals)
+next
+  case InitBlockRed thus ?case
+    by(auto simp:hyperset_defs elim!:D_mono' simp del:fun_upd_apply)
+next
+  case BlockRedNone thus ?case
+    by(auto simp:hyperset_defs elim!:D_mono' simp del:fun_upd_apply)
+next
+  case BlockRedSome thus ?case
+    by(auto simp:hyperset_defs elim!:D_mono' simp del:fun_upd_apply)
+next
+  case SeqRed thus ?case by (auto elim!: D_mono[OF red_lA_incr])
+next
+  case CondRed thus ?case by (auto elim!: D_mono[OF red_lA_incr])
+next
+  case TryRed thus ?case
+    by (fastforce dest:red_lcl_incr intro:D_mono' simp:hyperset_defs)
+next
+  case ListRed1 thus ?case by (auto elim!: Ds_mono[OF red_lA_incr])
+next
+  case RedWhile thus ?case by(auto simp:hyperset_defs elim!:D_mono')
+next
+  case RedInit then show ?case by (auto intro: D_mono' simp: hyperset_defs)
+next
+  case (RInitRed e h l sh b e' h' l' sh' b' C Cs e\<^sub>0)
+  then show ?case by(auto simp:hyperset_defs dest:red_lcl_incr elim!:D_mono')
+qed(auto simp:hyperset_defs)

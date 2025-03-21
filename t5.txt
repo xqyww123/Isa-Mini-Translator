@@ -1,0 +1,55 @@
+proof (induct rule:red_reds_inducts)
+  case (BinOpRed1 e h l sh b e' h' l' sh' b' bop e\<^sub>2)
+  then show ?case using BinOpRed1 nsub_RI_iconf[of e\<^sub>2 sh'] val_of_spec
+  proof(cases "val_of e") qed(simp,fast)
+next
+  case (FAssRed1 e h l sh b e' h' l' sh' b' F D e\<^sub>2)
+  then show ?case using FAssRed1 nsub_RI_iconf[of e\<^sub>2 sh'] val_of_spec
+  proof(cases "val_of e") qed(simp,fast)
+next
+  case (CallObj e h l sh b e' h' l' sh' b' M es)
+  then show ?case using CallObj nsub_RIs_iconfs[of es sh'] val_of_spec
+  proof(cases "val_of e") qed(simp,fast)
+next
+  case RedCall then show ?case using sees_wwf_nsub_RI[OF wf RedCall.hyps(2)]
+    by (clarsimp simp: assigned_def nsub_RI_iconf)
+next
+  case (RedSCall C M Ts T pns body D vs a a b)
+  then have "\<not>sub_RI (blocks (pns, Ts, vs, body))"
+    using sees_wwf_nsub_RI[OF wf RedSCall.hyps(1)] by simp
+  then show ?case by(rule nsub_RI_iconf)
+next
+  case SCallInitRed then show ?case by fastforce
+next
+  case (BlockRedNone e h l V sh b e' h' l' sh' b' T)
+  then show ?case by auto
+next
+  case (SeqRed e h l sh b e' h' l' sh' b' e\<^sub>2)
+  then show ?case
+  proof(cases "lass_val_of e")
+    case None then show ?thesis using SeqRed nsub_RI_iconf by(auto dest: val_of_spec)
+  next
+    case (Some a)
+    have "e' = unit \<and> sh' = sh" by(simp add: lass_val_of_red[OF Some SeqRed(1)])
+    then show ?thesis using SeqRed Some by(auto dest: val_of_spec)
+  qed
+next
+  case (ListRed1 e h l sh b e' h' l' sh' b' es)
+  then show ?case using ListRed1 nsub_RIs_iconfs[of es sh'] val_of_spec
+  proof(cases "val_of e") qed(simp,fast)
+next
+  case RedInit then show ?case by(auto simp: nsub_RI_iconf)
+next
+  case (RedInitDone sh C sfs C' Cs e h l b)
+  then show ?case proof(cases Cs) qed(auto simp: initPD_def)
+next
+  case (RedInitProcessing sh C sfs C' Cs e h l b)
+  then show ?case proof(cases Cs) qed(auto simp: initPD_def)
+next
+  case (RedRInit sh C sfs i sh' C' Cs v e h l b)
+  then show ?case proof(cases Cs) qed(auto simp: initPD_def)
+next
+  case CallThrowParams then show ?case by(auto simp: iconfs_map_throw)
+next
+  case SCallThrowParams then show ?case by(auto simp: iconfs_map_throw)
+qed(auto simp: nsub_RI_iconf lass_val_of_iconf)

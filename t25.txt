@@ -1,0 +1,46 @@
+proof(induct rule:red_reds_inducts)
+  case RedNew thus ?case
+    by(fast intro:lconf_hext red_hext_incr[OF red_reds.RedNew])
+next
+  case RedLAss thus ?case by(fastforce elim: lconf_upd simp:conf_def)
+next
+  case RedFAss thus ?case
+    by(fast intro:lconf_hext red_hext_incr[OF red_reds.RedFAss])
+next
+  case (InitBlockRed e h l V v sh b e' h' l' sh' b' v' T T')
+  have red: "P \<turnstile> \<langle>e, (h, l(V\<mapsto>v),sh),b\<rangle> \<rightarrow> \<langle>e',(h', l',sh'),b'\<rangle>"
+   and IH: "\<And>T E . \<lbrakk> P,E,h,sh \<turnstile> e:T; P,h \<turnstile> l(V\<mapsto>v) (:\<le>) E \<rbrakk>
+                     \<Longrightarrow> P,h' \<turnstile> l' (:\<le>) E"
+   and l'V: "l' V = Some v'" and lconf: "P,h \<turnstile> l (:\<le>) E"
+   and wt: "P,E,h,sh \<turnstile> {V:T := Val v; e} : T'" by fact+
+  from lconf_hext[OF lconf red_hext_incr[OF red]]
+  have "P,h' \<turnstile> l (:\<le>) E" .
+  moreover from IH lconf wt have "P,h' \<turnstile> l' (:\<le>) E(V\<mapsto>T)"
+    by(auto simp del: fun_upd_apply simp: fun_upd_same lconf_upd2 conf_def)
+  ultimately show "P,h' \<turnstile> l'(V := l V) (:\<le>) E"
+    by (fastforce simp:lconf_def split:if_split_asm)
+next
+  case (BlockRedNone e h l V sh b e' h' l' sh' b' T T')
+  have red: "P \<turnstile> \<langle>e,(h, l(V := None),sh),b\<rangle> \<rightarrow> \<langle>e',(h', l',sh'),b'\<rangle>"
+   and IH: "\<And>E T. \<lbrakk> P,E,h,sh \<turnstile> e : T; P,h \<turnstile> l(V:=None) (:\<le>) E \<rbrakk>
+                   \<Longrightarrow> P,h' \<turnstile> l' (:\<le>) E"
+   and lconf: "P,h \<turnstile> l (:\<le>) E" and wt: "P,E,h,sh \<turnstile> {V:T; e} : T'" by fact+
+  from lconf_hext[OF lconf red_hext_incr[OF red]]
+  have "P,h' \<turnstile> l (:\<le>) E" .
+  moreover have "P,h' \<turnstile> l' (:\<le>) E(V\<mapsto>T)"
+    by(rule IH, insert lconf wt, auto simp:lconf_def)
+  ultimately show "P,h' \<turnstile> l'(V := l V) (:\<le>) E"
+    by (fastforce simp:lconf_def split:if_split_asm)
+next
+  case (BlockRedSome e h l V sh b e' h' l' sh' b' v T T')
+  have red: "P \<turnstile> \<langle>e,(h, l(V := None),sh),b\<rangle> \<rightarrow> \<langle>e',(h', l',sh'),b'\<rangle>"
+   and IH: "\<And>E T. \<lbrakk>P,E,h,sh \<turnstile> e : T; P,h \<turnstile> l(V:=None) (:\<le>) E\<rbrakk>
+                   \<Longrightarrow> P,h' \<turnstile> l' (:\<le>) E"
+   and lconf: "P,h \<turnstile> l (:\<le>) E" and wt: "P,E,h,sh \<turnstile> {V:T; e} : T'" by fact+
+  from lconf_hext[OF lconf red_hext_incr[OF red]]
+  have "P,h' \<turnstile> l (:\<le>) E" .
+  moreover have "P,h' \<turnstile> l' (:\<le>) E(V\<mapsto>T)"
+    by(rule IH, insert lconf wt, auto simp:lconf_def)
+  ultimately show "P,h' \<turnstile> l'(V := l V) (:\<le>) E"
+    by (fastforce simp:lconf_def split:if_split_asm)
+qed(auto elim: WTrt.cases)
