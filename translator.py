@@ -70,11 +70,20 @@ ML_Translator_Top.init_translator (Path.explode "{os.getcwd()}/cache/translation
 REPL_Server.register_app "Minilang-Translator" ML_Translator_Top.REPL_App
 """
 
+def norm_file(file):
+    if os.path.isabs(file):
+        try:
+            rel_path = os.path.relpath(file, os.getcwd())
+            file = './' + rel_path if not rel_path.startswith('.') else rel_path
+            return file
+        except ValueError:
+            return file
+
 def encode_pos (pos):
-    return f'{pos[3][1]}:{pos[0]}'
+    return f'{norm_file(pos[3][1])}:{pos[0]}'
 
 def encode_pos2 (pos):
-    return f'{pos[3][1]}:{pos[0]}:{pos[1]}'
+    return f'{norm_file(pos[3][1])}:{pos[0]}:{pos[1]}'
 
 def check_cpu_usage(pid, timeout_minutes=10, threshold=70):
     """
@@ -184,14 +193,14 @@ with SqliteDict(sys.argv[2]) as db:
                                 mp.pack(run, c.cout)
                                 c.cout.flush()
                             case (1, pos_spec, pos_prf, origin, err):
-                                logger.error(f"{pos_spec[3][1]}:{pos_spec[0]} fails")
+                                logger.error(f"{norm_file(pos_spec[3][1])}:{pos_spec[0]} fails")
                                 logger.error(err)
                                 pos_spec = encode_pos(pos_spec)
                                 pos_prf = encode_pos(pos_prf)
                                 db[pos_spec] = (False, err, origin, pos_prf)
                                 db.commit()
                             case (2, pos_spec, pos_prf, origin, ret):
-                                logger.info(f"{pos_spec[3][1]}:{pos_spec[0]} succeeds")
+                                logger.info(f"{norm_file(pos_spec[3][1])}:{pos_spec[0]} succeeds")
                                 logger.info(ret['refined'])
                                 pos_spec = encode_pos(pos_spec)
                                 pos_prf = encode_pos(pos_prf)
@@ -210,11 +219,11 @@ with SqliteDict(sys.argv[2]) as db:
                                 raise Exception("BUG")
 
                 c.run_app("Minilang-Translator")
-                logger.info(f"translating {path}")
+                logger.info(f"translating {norm_file(path)}")
                 mp.pack(path, c.cout)
                 c.cout.flush()
                 interact()
-                logger.info(f"finished {path}")
+                logger.info(f"finished {norm_file(path)}")
                 db[rpath] = True
                 db.commit()
 
