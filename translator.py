@@ -64,9 +64,9 @@ targets = []
 with open(sys.argv[3]) as file:
     targets = [line.rstrip() for line in file]
 
-os.makedirs(f"{os.getcwd()}/translation_tmp", exist_ok=True)
+os.makedirs(f"{os.getcwd()}/cache/translation/tmp", exist_ok=True)
 INIT_SCRIPT = f"""
-ML_Translator_Top.init_translator (Path.explode "{os.getcwd()}/translation_tmp") (ML_Translator_Top.interactive_reporter());
+ML_Translator_Top.init_translator (Path.explode "{os.getcwd()}/cache/translation/tmp") (ML_Translator_Top.interactive_reporter());
 REPL_Server.register_app "Minilang-Translator" ML_Translator_Top.REPL_App
 """
 
@@ -183,17 +183,19 @@ with SqliteDict(sys.argv[2]) as db:
                                     run = True
                                 mp.pack(run, c.cout)
                                 c.cout.flush()
-                            case (1, pos, err):
-                                logger.error(f"{pos[3][1]}:{pos[0]} fails")
+                            case (1, pos_spec, pos_prf, origin, err):
+                                logger.error(f"{pos_spec[3][1]}:{pos_spec[0]} fails")
                                 logger.error(err)
-                                pos = encode_pos(pos)
-                                db[pos] = (False, err)
+                                pos_spec = encode_pos(pos_spec)
+                                pos_prf = encode_pos(pos_prf)
+                                db[pos_spec] = (False, err, origin, pos_prf)
                                 db.commit()
-                            case (2, pos, ret):
-                                logger.info(f"{pos[3][1]}:{pos[0]} succeeds")
+                            case (2, pos_spec, pos_prf, origin, ret):
+                                logger.info(f"{pos_spec[3][1]}:{pos_spec[0]} succeeds")
                                 logger.info(ret['refined'])
-                                pos = encode_pos(pos)
-                                db[pos] = (True, ret)
+                                pos_spec = encode_pos(pos_spec)
+                                pos_prf = encode_pos(pos_prf)
+                                db[pos_spec] = (True, ret, origin, pos_prf)
                                 db.commit()
                             case 3:
                                 break

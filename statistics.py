@@ -19,7 +19,8 @@ distrs = {}
 distr = Counter({})
 
 COMMANDS = {'HAVE', 'END', 'NEXT', 'CONSIDER', 'RULE', 'UNFOLD', 'INTRO', 'APPLY', 'CRUSH',
-            'CASE_SPLIT', 'INDUCT', 'OPEN_MODULE', 'CONFIG', 'DEFINE', 'LET', 'HAMMER', 'NOTATION'}
+            'CASE_SPLIT', 'INDUCT', 'OPEN_MODULE', 'CONFIG', 'DEFINE', 'LET', 'HAMMER', 'NOTATION',
+            'SIMP'}
 
 def distr_of_commands (script):
     all_commands = [line.split()[0] for line in script.splitlines() if line.strip() and line.split()]

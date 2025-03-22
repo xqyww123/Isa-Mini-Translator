@@ -1,6 +1,6 @@
 theory Translation_Test
   imports Main "HOL-Library.Log_Nat" "HOL-Library.Lattice_Algebras"
-          MS_Translator_Top HOL.Transcendental HOL.Groups_Big
+          "../MS_Translator_Top" HOL.Transcendental HOL.Groups_Big
 begin
 
 
@@ -140,9 +140,7 @@ mqed
 .
 mqed
 (*end 2 subgoals*)
-.
-
-
+  .
 
 
 lemma "n choose k \<le> n choose (n div 2)"
@@ -206,7 +204,7 @@ apply (simp_all add : binomial_eq_0)
 .  
 mqed     
 .              
-                       
+                        
 ML \<open>ML_Translator_Top.init_translator (Path.explode "/tmp/xxx")
                                       (ML_Translator_Top.interactive_reporter ())\<close>
   

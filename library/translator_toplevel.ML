@@ -1,8 +1,16 @@
 signature ML_TRANSLATOR_TOP = sig
 
-type reporter = { succeed: Position.T * (string * string) list -> unit,
+type reporter = { succeed: Position.T (*position of goal statement*)
+                         * Position.T (*position of the first line of the proof*)
+                         * string     (*original Isar proof*)
+                         * (string * string) list (*translation result*)
+                        -> unit,
                   start: Position.T -> bool,
-                  fail : Position.T * exn -> unit,
+                  fail : Position.T (*position of goal statement*)
+                       * Position.T (*position of the first line of the proof*)
+                       * string     (*original Isar proof*)
+                       * exn
+                      -> unit,
                   declaration : Position.T * string -> unit,
                   new_thy : Position.T * Thy_Header.header -> unit }
 
@@ -24,11 +32,11 @@ exception Translation_Fail = MinLang_Translator.Translation_Fail
 
 local
 
-fun is_proof_command (Command_Span.Command_Span (name, _)) =
+fun is_goal_command (Command_Span.Command_Span (name, _)) =
       member (op =) ["lemma", "theorem", "schematic_goal", "proposition", "corollary",
                      "interpretation", "global_interpretation", "sublocale"] name
-  | is_proof_command _ = false
-fun is_proof_command' (Command_Span.Span (k, _)) = is_proof_command k
+  | is_goal_command _ = false
+fun is_goal_command' (Command_Span.Span (k, _)) = is_goal_command k
 
 val extract_proof =
   let datatype ele = FWD | BWD
@@ -90,22 +98,30 @@ fun has_begin_tail toks =
 
 in
 
-type reporter = { succeed: Position.T * (string * string) list -> unit,
+type reporter = { succeed: Position.T (*position of goal statement*)
+                         * Position.T (*position of the first line of the proof*)
+                         * string     (*original Isar proof*)
+                         * (string * string) list (*translation result*)
+                        -> unit,
                   start: Position.T -> bool,
-                  fail : Position.T * exn -> unit,
+                  fail : Position.T (*position of goal statement*)
+                       * Position.T (*position of the first line of the proof*)
+                       * string     (*original Isar proof*)
+                       * exn
+                      -> unit,
                   declaration : Position.T * string -> unit,
                   new_thy : Position.T * Thy_Header.header -> unit }
 
 fun interactive_reporter () =
   let val success = Unsynchronized.ref 0
       val total   = Unsynchronized.ref 0
-   in { succeed = (fn (pos, strs) => (
+   in { succeed = (fn (_, pos, _, strs) => (
             success := !success + 1
           ; REPL.origin_tracing ([("Translated line " ^ string_of_int (the (Position.line_of pos))),
                                  ", succeeded ", string_of_int (!success), "/", string_of_int (!total),
                                  "\n"] @ maps (fn (k,v) => [k," : ",v,"\n"]) strs)
         )),
-        fail   = (fn (pos, E) =>
+        fail   = (fn (_, pos, _, E) =>
             REPL.origin_warning ( "Fail to translate " :: string_of_int (the (Position.line_of pos)) ::
                                   ", succeeded " :: string_of_int (!success) :: "/" :: string_of_int (!total)
                                :: "\n" :: Runtime.exn_message_list E )
@@ -166,26 +182,28 @@ fun REPL_plugin reporter : REPL.collector = fn cfg => fn {current_command, state
         else ()
          end
    in report_decl ()
-   ; if is_proof_command' current_command andalso
-     Toplevel.is_proof state andalso
-     let val st = #goal (Proof.raw_goal (Toplevel.proof_of state))
-      in not (Thm.is_dummy st) andalso not (Thm.no_prems st)
-     end
-  then if #start reporter pos
-    then \<^try>\<open>let
-        val prf = extract_proof remaining
-               |> map (fn Command_Span.Span (_, src) => filter Token.is_proper src)
-        val asts = MinLang_Translator.translate_m (state, prf)
-        val strs = map (apsnd (MinLang_Translator.print_mast true)) asts
-        val origin = String.concatWith "\n" (map (String.concat o Minilang_Aux.print_toks) prf)
-        val _ = REPL.origin_warning [origin]
-     in #succeed reporter (pos, next_pos, origin, strs)
-      ; (NONE, NONE)
-    end catch E => (
-      #fail reporter (pos, next_pos, origin, E)
-    ; (NONE, NONE)) \<close>
+   ; if is_goal_command' current_command andalso
+        Toplevel.is_proof state andalso
+         let val st = #goal (Proof.raw_goal (Toplevel.proof_of state))
+          in not (Thm.is_dummy st) andalso not (Thm.no_prems st)
+         end
+    then if #start reporter pos
+      then let
+          val prf = extract_proof remaining
+                 |> map (fn Command_Span.Span (_, src) => filter Token.is_proper src)
+          val origin = String.concatWith "\n" (map (String.concat o Minilang_Aux.print_toks) prf)
+       in \<^try>\<open>let
+          val asts = MinLang_Translator.translate_m (state, prf)
+          val strs = map (apsnd (MinLang_Translator.print_mast true)) asts
+          val _ = REPL.origin_warning [origin]
+       in #succeed reporter (pos, next_pos, origin, strs)
+        ; (NONE, NONE)
+      end catch E => (
+        #fail reporter (pos, next_pos, origin, E)
+      ; (NONE, NONE)) \<close>
+      end
+      else (NONE, NONE)
     else (NONE, NONE)
-  else (NONE, NONE)
   end
   
 (* fun translate_thy src *)
@@ -207,7 +225,8 @@ fun translate_file path =
    in translate_src { thy_qualifier = thy_qualifier,
                       file = SOME path,
                       position_label = NONE,
-                      additional_libs = ["Minilang.Minilang_Base"] }
+                      additional_libs = ["Minilang.Minilang_Base"],
+                      import_dir = NONE }
                     src
   end
 
@@ -234,13 +253,13 @@ fun socket_reporter (cin,cout) =
            in cin := cin'
            ; ret
           end),
-        fail  = (fn (pos, E) => (
-            doPack (packTuple3 (packInt, pos_packer, packString))
-                   (1, pos, Minilang_Aux.trim_markup (String.concat (Runtime.exn_message_list E))) cout
+        fail  = (fn (pos_spec, pos_proof, origin, E) => (
+            doPack (packTuple5 (packInt, pos_packer, pos_packer, packString, packString))
+                   (1, pos_spec, pos_proof, origin, Minilang_Aux.trim_markup (String.concat (Runtime.exn_message_list E))) cout
           ; BinIO.StreamIO.flushOut cout )),
-        succeed = (fn (pos, strs) => (
-            doPack (packTuple3 (packInt, pos_packer, packPairList (packString, packString)))
-                   (2, pos, strs) cout
+        succeed = (fn (pos_spec, pos_proof, origin, strs) => (
+            doPack (packTuple5 (packInt, pos_packer, pos_packer, packString, packPairList (packString, packString)))
+                   (2, pos_spec, pos_proof, origin, strs) cout
           ; BinIO.StreamIO.flushOut cout )),
         declaration = (fn (pos, line) =>
             (doPack (packTuple3 (packInt, pos_packer, packString))
