@@ -272,13 +272,12 @@ fun socket_reporter (cin,cout) =
 
 fun REPL_App (cin, cout) =
   let open MessagePackBinIO.Unpack MessagePackBinIO.Pack
-      val (path, cin') = doUnpack unpackString cin
-      val cin = Unsynchronized.ref cin'
+      val (path, cin') = doUnpack unpackString (!cin)
+      val _ = cin := cin'
    in REPL.register_plugin ("MinLang.Translator", REPL_plugin (socket_reporter (cin,cout)))
     ; translate_file path
     ; doPack packInt 3 cout
     ; BinIO.StreamIO.flushOut cout
-    ; !cin
   end
 
 end
