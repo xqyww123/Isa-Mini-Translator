@@ -225,7 +225,7 @@ fun translate_file path =
    in translate_src { thy_qualifier = thy_qualifier,
                       file = SOME path,
                       position_label = NONE,
-                      additional_libs = ["Minilang.Minilang_Base"],
+                      additional_libs = [] (*["Minilang.Minilang_Base"]*),
                       import_dir = NONE }
                     src
   end
