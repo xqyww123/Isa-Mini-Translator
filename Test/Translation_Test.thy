@@ -183,7 +183,7 @@ apply ((linarith)[1])
 apply ((linarith)[1]) 
 (*end 2 subgoals*)
 . 
-mqed
+mqed 
 (*NEXT*)      
 mproof       
 case  2

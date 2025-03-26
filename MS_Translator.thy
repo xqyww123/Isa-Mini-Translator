@@ -9,6 +9,8 @@ method_setup msorry = \<open>
     CONTEXT_METHOD (fn _ => fn (ctxt, st) =>
       TACTIC_CONTEXT ctxt (ALLGOALS (Skip_Proof.cheat_tac ctxt) st))) \<close>
 
+declare [[ML_debugger]]
+
 ML_file \<open>library/translator_auxcmds.ML\<close>
 ML_file \<open>library/oneshot_ref.ML\<close>
 ML_file \<open>library/translator.ML\<close>
