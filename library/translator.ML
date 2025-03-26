@@ -5027,22 +5027,32 @@ fun translate_m (s, toks) =
       val s0 = Minilang.INIT' ps
       val ctxt0 = Proof.context_of ps
       val ret = Unsynchronized.ref []
-   in Minilang.set_reporter item_reporter
-    ; trans_to_minlang (translate (s, toks)) s0 |> fst
-   |> norm_Mtac                            (*destroys state*)
-   |> validatem ctxt0 (Minilang.INIT' ps)
-   |> (fn X => ((
-      if mast_cheat' X then () else ret := ("raw", X) :: !ret
-      ); X))
-   |> refinement                           (*preserves state*)
-(*   |> move_lemma                           (*destroys state*) *)
-   |> validatem ctxt0 (Minilang.INIT' ps)
-   |> red_SIMP                             
-   |> (fn X =>
-      if mast_cheat' X
-      then raise Translation_Fail "Some proof obligation fails"
-      else (warning (print_mast true X);
-            ("refined", X) :: !ret))
+      val _ = Minilang.set_reporter item_reporter
+      val raw = trans_to_minlang (translate (s, toks)) s0 |> fst
+             |> norm_Mtac                            (*destroys state*)
+             |> validatem ctxt0 (Minilang.INIT' ps)
+      fun report cat rep =
+            if mast_cheat' rep then () else ret := (cat, rep) :: !ret
+      val _ = report "raw" raw
+      val refined = raw
+             |> refinement                           (*preserves state*)
+             |> validatem ctxt0 (Minilang.INIT' ps)
+             |> red_SIMP                           
+             |> validatem ctxt0 (Minilang.INIT' ps)
+      val _ = if mast_cheat' refined
+              then raise Translation_Fail "Some proof obligation fails"
+              else ( warning (print_mast true refined);
+                     ret := ("refined", refined) :: !ret )
+      val ord_raw = raw
+             |> move_lemma                           (*destroys state*)
+             |> validatem ctxt0 (Minilang.INIT' ps)
+      val _ = report "reord_raw" ord_raw
+      val ord_refined = refined
+             |> move_lemma
+             |> validatem ctxt0 (Minilang.INIT' ps)
+      val _ = report "reord_refined" ord_refined
+      val _ = warning (String.concatWith " " ("produce: " :: map (fst) (!ret)))
+   in !ret
   end
 
 fun parse state src =
