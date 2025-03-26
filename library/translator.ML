@@ -595,6 +595,34 @@ type mast' = (Minilang.state option * mast) list
   | all2 f (x :: xs) (y :: ys) = f x y andalso all2 f xs ys
   | all2 _ _ _ = false *)
 
+(** Pre-Print **)
+
+fun implode_with' _ []  R = R
+  | implode_with' _ [x] R = x @ R
+  | implode_with' s (h::L) R = h @ s :: implode_with' s L R
+
+fun implode_with _ [] = []
+  | implode_with _ [x] = x
+  | implode_with s (h::L) = h @ s :: implode_with s L
+
+
+fun tokenize_iv' (Facts.FromTo (i,j)) = [mk_tok_nat i, tok_minus, mk_tok_nat j]
+  | tokenize_iv' (Facts.From i) = [mk_tok_nat i, tok_minus]
+  | tokenize_iv' (Facts.Single i) = [mk_tok_nat i]
+fun tokenize_iv NONE = []
+  | tokenize_iv (SOME ivs) =
+      mk_tok_kwd "(" :: implode_with (tok_comma) (map tokenize_iv' ivs) @ [mk_tok_kwd ")"]
+
+fun tokenize_factref (Facts.Named (N_pos, iv)) = Token.make_string N_pos :: tokenize_iv iv
+  | tokenize_factref (Facts.Fact expr) =
+      Token.tokenize keywords {strict = false}
+          (Symbol_Pos.explode ("\<open>" ^ trim_markup expr ^ "\<close>", Position.none))
+fun tokenize_fact  (rf, []) = tokenize_factref rf
+  | tokenize_fact  (rf, atts) =
+      tokenize_factref rf @ tok_brakL :: implode_with (tok_comma) atts @ [tok_brakR]
+fun method_insert  thms = (Method.Source (tok_insert :: maps tokenize_fact thms))
+fun method_insert1 thms = tac_for_1 (Method.Source (tok_insert :: maps tokenize_fact thms))
+
 (** Pass Helpers **)
 
 fun linear_pass' scope F =
@@ -999,37 +1027,9 @@ fun match_toks [] _ = true
                      | NONE   => true)
       andalso match_toks pats toks
 
-fun subst_fact_in_toks ctxt F =
+fun subst_fact_in_toks'gen F =
   let val match = match_toks
-      fun tokenize_seg (name, i, n, N) =
-        if n = N andalso i = 0
-        then [mk_idt name]
-        else if n = 1
-        then [mk_idt name, tok_parL, mk_tok_nat i, tok_parR]
-        else if i + n - 1 = N
-        then [mk_idt name, tok_parL, mk_tok_nat i, tok_minus, tok_parR]
-        else [mk_idt name, tok_parL, mk_tok_nat i, tok_minus, mk_tok_nat (i+n-1), tok_parR]
-
       open Token
-
-
-      fun read_attr' ~1 toks = ([], toks)
-        | read_attr' lev toks =
-            (( $$$$ "[" #> read_attr' (lev + 1)
-            || $$$$ "]" #> read_attr' (lev - 1)
-            || tl #> read_attr' lev)
-            >> prepend (hd toks) ) toks
-
-      fun read_attr [] = Scan.fail []
-        | read_attr toks =
-            ( $$$$ "[" #> read_attr' 0 >> prepend (hd toks) ) toks
-
-      val read_fact = let open Parse Scan in
-                        Scan.option (
-                          read_attr >> pair ("", NONE) ||
-                          (( Scan.permissive name -- Scan.option permissive_thm_sel )
-                          -- (read_attr || pair []) ) )
-                      end
 
       fun subs_toks [] = []
         | subs_toks toks =
@@ -1058,17 +1058,7 @@ fun subst_fact_in_toks ctxt F =
                      | Long_Ident => true
                      | _ => false
                   )
-              then case read_fact toks
-                of (NONE, _) => tok :: subs_toks R
-                 | (SOME ((name, ivs), attrs), remaining) => (
-               case F ctxt (unquote name)
-                 of NONE => tok :: subs_toks R
-                  | SOME provide (*must be sorted, can be compact*) => let
-                       val len = Lazy.lazy (fn () => length (Proof_Context.get_thms (the ctxt) name))
-                       val segs = select_facts len provide ivs
-                               |> maps (fn s => tokenize_seg s @ attrs)
-                    in segs @ subs_toks remaining
-                   end)
+              then F toks subs_toks
               else tok :: subs_toks R
    in fn toks =>
    let val ret = subs_toks toks
@@ -1078,11 +1068,58 @@ fun subst_fact_in_toks ctxt F =
    end
   end
 
-fun map_tac_token _ _ (Method.Source []) = (Method.Source [])
-  | map_tac_token ctxt F (Method.Source (h::L)) = (Method.Source (h :: subst_fact_in_toks ctxt F L))
-  | map_tac_token ctxt F (Method.Combinator (oi, opr, tacs))
-      = Method.Combinator (oi, opr, map (map_tac_token ctxt F) tacs)
-  | map_tac_token _ _ m = m
+fun subst_fact_in_toks ctxt F = 
+  let fun tokenize_seg (name, i, n, N) =
+        if n = N andalso i = 0
+        then [mk_idt name]
+        else if n = 1
+        then [mk_idt name, tok_parL, mk_tok_nat i, tok_parR]
+        else if i + n - 1 = N
+        then [mk_idt name, tok_parL, mk_tok_nat i, tok_minus, tok_parR]
+        else [mk_idt name, tok_parL, mk_tok_nat i, tok_minus, mk_tok_nat (i+n-1), tok_parR]
+
+      open Token
+
+      fun read_attr' ~1 toks = ([], toks)
+        | read_attr' lev toks =
+            (( $$$$ "[" #> read_attr' (lev + 1)
+            || $$$$ "]" #> read_attr' (lev - 1)
+            || tl #> read_attr' lev)
+            >> prepend (hd toks) ) toks
+
+      fun read_attr [] = Scan.fail []
+        | read_attr toks =
+            ( $$$$ "[" #> read_attr' 0 >> prepend (hd toks) ) toks
+
+      val read_fact = let open Parse Scan in
+                        Scan.option (
+                          read_attr >> pair ("", NONE) ||
+                          (( Scan.permissive name -- Scan.option permissive_thm_sel )
+                          -- (read_attr || pair []) ) )
+                      end
+      fun subst [] _ = error "BUG subst_fact_in_toks.subst"
+        | subst (toks as tok :: R) subs_toks =
+            case read_fact toks
+              of (NONE, _) => tok :: subs_toks R
+               | (SOME ((name, ivs), attrs), remaining) => (
+             case F ctxt (unquote name)
+               of NONE => tok :: subs_toks R
+                | SOME provide (*must be sorted, can be compact*) => let
+                     val len = Lazy.lazy (fn () => length (Proof_Context.get_thms (the ctxt) name))
+                     val segs = select_facts len provide ivs
+                             |> maps (fn s => tokenize_seg s @ attrs)
+                  in segs @ subs_toks remaining
+                 end)
+   in subst
+  end
+
+
+
+fun map_tac_token'gen _ (Method.Source []) = (Method.Source [])
+  | map_tac_token'gen F (Method.Source (h::L)) = (Method.Source (h :: subst_fact_in_toks'gen F L))
+  | map_tac_token'gen F (Method.Combinator (oi, opr, tacs))
+      = Method.Combinator (oi, opr, map (map_tac_token'gen F) tacs)
+  | map_tac_token'gen _ m = m
 
 fun exists_tac_token _ (Method.Source []) = false
   | exists_tac_token P (Method.Source (_::L)) = exists (exists_token_content P) L
@@ -1091,7 +1128,7 @@ fun exists_tac_token _ (Method.Source []) = false
   | exists_tac_token _ _ = false
 
 fun map_a_fact ctxt F (origin as Facts.Named ((name,_),iv), attrs0) =
-  let val attrs = map (subst_fact_in_toks ctxt F) attrs0
+  let val attrs = map (subst_fact_in_toks'gen (subst_fact_in_toks ctxt F)) attrs0
    in case F ctxt (unquote name)
         of NONE => [(origin, attrs)]
          | SOME provide => let
@@ -1122,8 +1159,65 @@ fun map_a_fact ctxt F (origin as Facts.Named ((name,_),iv), attrs0) =
   end
   | map_a_fact _ _ origin = [origin]
 
-fun map_facts ctxt F factsx =
-  let val ret' = maps (map_a_fact (SOME ctxt) F) factsx
+fun replace_fact_expr_with_name'core ctxt raw_expr =
+      let val thy = Proof_Context.theory_of ctxt
+          val facts = Proof_Context.facts_of ctxt
+          val local_facts =
+            Facts.dest_static true [Global_Theory.facts_of thy] facts
+       in case try (Syntax.read_prop (Proof_Context.set_mode Proof_Context.mode_pattern ctxt)) raw_expr
+       of NONE => NONE
+        | SOME pat => let
+          val options = map_filter (fn (name, ths) =>
+                    case get_index (fn th => if Pattern.matches thy (pat, Thm.prop_of th)
+                                                    then SOME th
+                                                    else NONE ) ths
+                      of NONE => NONE
+                       | SOME (i, th) => let
+                             val name' = simp_fact_name ctxt name
+                             val iv = (case ths of [_] => NONE
+                                                 | _ => SOME [Facts.Single (i+1)] )
+                          in SOME (th, Facts.Named ((name', Position.none), iv))
+                         end
+                    ) local_facts
+                    |> distinct (Thm.equiv_thm thy o apply2 fst)
+       in case options
+       of [(_,x)] => SOME x
+        |  _  => NONE
+      end
+      end
+
+fun replace_fact_expr_with_name _ (origin as (Facts.Named _, _)) = [origin]
+  | replace_fact_expr_with_name opt_ctxt (origin as (Facts.Fact raw_expr, attrs)) =
+      let val ctxt = (case opt_ctxt of SOME ctxt => ctxt
+                                     | NONE => error "replace_fact_expr_with_name - opt_ctxt" )
+       in case replace_fact_expr_with_name'core ctxt raw_expr
+       of SOME x => [(x, attrs)]
+        | NONE   => [origin]
+      end
+
+fun replace_fact_expr_with_name_in_toks _ [] _ = error "replace_fact_expr_with_name_in_toks - empty"
+  | replace_fact_expr_with_name_in_toks opt_ctxt (toks as tok :: _) continue =
+  let fun fallback [] = error "replace_fact_expr_with_name_in_toks - empty"
+        | fallback (tok :: toks) = tok :: continue toks
+   in if Token.is_kind Token.Cartouche tok
+    then case try Parse.term toks
+           of SOME (raw_expr, toks') =>
+               let val ctxt = (case opt_ctxt of SOME ctxt => ctxt
+                                              | NONE => error "replace_fact_expr_with_name_in_toks - opt_ctxt" )
+                in case replace_fact_expr_with_name'core ctxt raw_expr
+                of SOME x => tokenize_factref x @ continue toks'
+                 | NONE   => fallback toks
+               end
+            | NONE => fallback toks
+    else fallback toks
+  end
+
+
+
+
+fun map_facts'gen G factsx =
+  let val ret' = maps G factsx
+   (* val ret' = maps (map_a_fact (SOME ctxt) F) factsx *)
       val _ = if exists ((fn Facts.Named (_, SOME iv) => 
                               exists (fn Facts.Single i => i <= 0
                                        | Facts.From i => i <= 0
@@ -1151,46 +1245,61 @@ fun exists_fact_factref P (Facts.Named ((name,_),_)) = P name
 fun exists_fact_fact  P (rf, toks)
       = exists_fact_factref P rf orelse exists (exists (exists_token_content P)) toks
 
-fun map_ast_fact F (s, PROOF (tac, body))
-      = (s, PROOF (map_tac_token (Option.map Proof.context_of s) F tac, body))
-  | map_ast_fact F (s, QED (tac, time))
-      = (s, QED (Option.map (map_tac_token (Option.map Proof.context_of s) F) tac, time))
-  | map_ast_fact F (s, USING facts)
-      = (s, USING (map_facts (the (Option.map Proof.context_of s)) F facts))
-(*  | map_ast_fact F (s, MCALCULATION (B, goal, using))
-      = let val using' = map (fn (rules, facts) =>
-                  let val ctxt = Proof.context_of (the s)
-                      val facts' = facts |> map (rpair [])
-                                         |> map_facts ctxt F
-                                         |> map fst
-                      val rules' = map_facts ctxt F rules
-                   in (rules', facts')
-                  end ) using
-         in (s, MCALCULATION (B, goal, using'))
-        end *)
-  | map_ast_fact F (s, WITH facts)
-      = (s, WITH (map_facts (Proof.context_of (the s)) F facts))
-  | map_ast_fact F (s, FROM facts)
-      = (s, FROM (map_facts (Proof.context_of (the s)) F facts))
-  | map_ast_fact F (s, UNFOLD facts)
-      = (s, UNFOLD (map_facts (Proof.context_of (the s)) F facts))
-  | map_ast_fact F (s, ISAR_BY ((t1, t2), time))
-      = (s, ISAR_BY ( (map_tac_token (Option.map Proof.context_of s) F t1,
-                       Option.map (map_tac_token (Option.map Proof.context_of s) F) t2)
-                    , time ))
-  | map_ast_fact F (s, APPLY_END tac)
-      = (s, APPLY_END (map_tac_token (Option.map Proof.context_of s) F tac))
-  | map_ast_fact F (s, TACTIC (tac, using, t))
-      = (s, TACTIC (map_tac_token (Option.map Proof.context_of s) F tac,
-                    map_facts (Proof.context_of (the s)) F using, t))
-  | map_ast_fact F (s, NOTE facts)
-      = let val ctxt = Proof.context_of (the s)
-         in (s, NOTE (map (fn (AT, facts') =>
-                          (AT, map_facts ctxt F facts')) facts))
-        end
-  | map_ast_fact _ X = X
+fun map_ast_fact'gen G F =
+let fun map_ast (s, PROOF (tac, body))
+          = (s, PROOF (map_tac_token'gen (F (Option.map Proof.context_of s)) tac, body))
+      | map_ast (s, QED (tac, time))
+          = (s, QED (Option.map (map_tac_token'gen (F (Option.map Proof.context_of s))) tac, time))
+      | map_ast (s, USING facts)
+          = (s, USING (map_facts'gen (G (Option.map Proof.context_of s)) facts))
+    (*  | map_ast_fact F (s, MCALCULATION (B, goal, using))
+          = let val using' = map (fn (rules, facts) =>
+                      let val ctxt = Proof.context_of (the s)
+                          val facts' = facts |> map (rpair [])
+                                             |> map_facts ctxt F
+                                             |> map fst
+                          val rules' = map_facts ctxt F rules
+                       in (rules', facts')
+                      end ) using
+             in (s, MCALCULATION (B, goal, using'))
+            end *)
+      | map_ast (s, WITH facts)
+          = (s, WITH (map_facts'gen (G (Option.map Proof.context_of s)) facts))
+      | map_ast (s, FROM facts)
+          = (s, FROM (map_facts'gen (G (Option.map Proof.context_of s)) facts))
+      | map_ast (s, UNFOLD facts)
+          = (s, UNFOLD (map_facts'gen (G (Option.map Proof.context_of s)) facts))
+      | map_ast (s, ISAR_BY ((t1, t2), time))
+          = (s, ISAR_BY ( (map_tac_token'gen (F (Option.map Proof.context_of s)) t1,
+                           Option.map (map_tac_token'gen (F (Option.map Proof.context_of s))) t2)
+                        , time ))
+      | map_ast (s, APPLY_END tac)
+          = (s, APPLY_END (map_tac_token'gen (F (Option.map Proof.context_of s)) tac))
+      | map_ast (s, TACTIC (tac, using, t))
+          = (s, TACTIC (map_tac_token'gen (F (Option.map Proof.context_of s)) tac,
+                        map_facts'gen (G (Option.map Proof.context_of s)) using, t))
+      | map_ast (s, NOTE facts)
+          = let val ctxt = Option.map Proof.context_of s
+             in (s, NOTE (map (fn (AT, facts') =>
+                              (AT, map_facts'gen (G ctxt) facts')) facts))
+            end
+      | map_ast X = X
+ in map_ast
+end
 
+
+fun map_ast_fact F =
+      map_ast_fact'gen (fn ctxt => map_a_fact ctxt F)
+                       (fn ctxt => subst_fact_in_toks ctxt F)
 fun map_ast_fact' F = elementwise_pass NONE (map_ast_fact F)
+
+val replace_fact_expr =
+      map_ast_fact'gen replace_fact_expr_with_name
+                       replace_fact_expr_with_name_in_toks
+val replace_fact_expr' = elementwise_pass NONE replace_fact_expr
+
+
+
 
 fun exists_fact_in P (PROOF (tac, _)) = exists_tac_token P tac
   | exists_fact_in P (QED (SOME tac, _)) = exists_tac_token P tac
@@ -1284,14 +1393,6 @@ fun collect_mfacts ast = let
  end
 
 (** Print **)
-
-fun implode_with' _ []  R = R
-  | implode_with' _ [x] R = x @ R
-  | implode_with' s (h::L) R = h @ s :: implode_with' s L R
-
-fun implode_with _ [] = []
-  | implode_with _ [x] = x
-  | implode_with s (h::L) = h @ s :: implode_with s L
 
 (* fun print_toks toks = String.concatWith " " (map Token.unparse toks) *)
 
@@ -1440,23 +1541,6 @@ fun print_factref (Facts.Named ((N,_),iv)) = quote_fact N :: print_iv iv
   | print_factref (Facts.Fact expr) = ["\<open>", trim_markup expr, "\<close>"]
 fun print_fact (rf,attrs) = print_factref rf @ print_attr attrs
 val print_facts = implode_with " " o map print_fact
-
-fun tokenize_iv' (Facts.FromTo (i,j)) = [mk_tok_nat i, tok_minus, mk_tok_nat j]
-  | tokenize_iv' (Facts.From i) = [mk_tok_nat i, tok_minus]
-  | tokenize_iv' (Facts.Single i) = [mk_tok_nat i]
-fun tokenize_iv NONE = []
-  | tokenize_iv (SOME ivs) =
-      mk_tok_kwd "(" :: implode_with (tok_comma) (map tokenize_iv' ivs) @ [mk_tok_kwd ")"]
-
-fun tokenize_factref (Facts.Named (N_pos, iv)) = Token.make_string N_pos :: tokenize_iv iv
-  | tokenize_factref (Facts.Fact expr) =
-      Token.tokenize keywords {strict = false}
-          (Symbol_Pos.explode ("\<open>" ^ trim_markup expr ^ "\<close>", Position.none))
-fun tokenize_fact  (rf, []) = tokenize_factref rf
-  | tokenize_fact  (rf, atts) =
-      tokenize_factref rf @ tok_brakL :: implode_with (tok_comma) atts @ [tok_brakR]
-fun method_insert  thms = (Method.Source (tok_insert :: maps tokenize_fact thms))
-fun method_insert1 thms = tac_for_1 (Method.Source (tok_insert :: maps tokenize_fact thms))
 
 fun print_term tm = [quote_space (trim_markup tm)]
 fun print_statement (tm, [])   = print_term tm
@@ -4426,131 +4510,11 @@ and trans_branch_subgoals NVS bodies s =
  in trans_pass (SOME (Minilang.T_END, NONE)) ast s
 end
 
-(** Pass V - Refining Minilang **)
+(** Pass V - Before Refining Minilang **)
 
-(* Move Lemmas to Where They are Used *)
+(* Replace expression-based fact ref to named fact ref *)
 
-datatype scope = SCOPE  of scope list Unsynchronized.ref
-                         * mast
-                         * (mast' -> Minilang.state option * mast)
-               | SELEMT of (Minilang.state option * mast)
-               | SBRS   of Minilang.state option * scope list list
 
-fun build_scope [] = []
-  | build_scope ((s, x as MCONSIDER (args, body)) :: L) =
-         SCOPE (Unsynchronized.ref (build_scope body), x,
-                fn B => (s, MCONSIDER (args, B)))
-      :: build_scope L
-  | build_scope ((s, x as MHAVE (args, body)) :: L) =
-         SCOPE (Unsynchronized.ref (build_scope body), x,
-                fn B => (s, MHAVE (args, B)))
-      :: build_scope L
-(*  | build_scope ((s, x as MSTEP (args, body)) :: L) =
-         SCOPE (Unsynchronized.ref (build_scope body), x,
-                fn B => (s, MSTEP (args, B)))
-      :: build_scope L *)
-  | build_scope ((s, x as MOPEN_MODULE (args, body)) :: L) =
-         SCOPE (Unsynchronized.ref (build_scope body), x,
-                fn B => (s, MOPEN_MODULE (args, B)))
-      :: build_scope L
-(*  | build_scope ((s, x as MCALC (args, body)) :: L) =
-         SCOPE (Unsynchronized.ref (build_scope body), x,
-                fn B => (s, MCALC (args, B)))
-      :: build_scope L *)
-  | build_scope ((s, MBRANCH_SUBGOALS brs) :: L) =
-         SBRS (s, map build_scope brs)
-      :: build_scope L
-  | build_scope (x :: L) = SELEMT x :: build_scope L
-
-fun restore_scope [] = []
-  | restore_scope (SCOPE (scopes, _, re) :: L) = re (restore_scope (!scopes)) :: restore_scope L
-  | restore_scope (SELEMT x :: L) = x :: restore_scope L
-  | restore_scope (SBRS (s, brs) :: L) = (s, MBRANCH_SUBGOALS (map restore_scope brs)) :: restore_scope L
-
-(*P returns whether the fact occurs or not*)
-fun scopes_of_fact P  =
-  let fun join _ []  = NONE
-        | join _ [x] = SOME x
-        | join x _  = SOME x
-      fun scope_of scps (SCOPE (scp, x, _)) =
-          let val ret = map_filter (scope_of (scp::scps)) (!scp)
-           in if exists_fact_inm P x
-            then SOME (scp::scps)
-            else join scps ret
-          end
-        | scope_of scps (SELEMT (_, x)) =
-            if exists_fact_inm P x then SOME scps else NONE
-        | scope_of scps (SBRS (_, brs)) =
-            (join scps o map_filter (join scps o map_filter (scope_of scps))) brs
-   in join [] o map_filter (scope_of [])
-  end
-
-fun segment_pass_scp F =
-  let fun ivk scps = F (pass scps)
-      and pass [] = []
-        | pass (SCOPE (scps, decls, R) :: L) =
-            let val L' = pass L
-             in scps := ivk (!scps)
-              ; SCOPE (scps, decls, R) :: L'
-             end
-        | pass (SBRS (s, brs) :: L) =
-            let val L' = pass L
-                fun rmap [] = []
-                  | rmap (x :: L) =
-                      let val L' = rmap L
-                       in ivk x :: L'
-                      end
-             in SBRS (s, rmap brs) :: L'
-            end
-        | pass (x :: L) = x :: pass L
-   in ivk
-  end
-
-(*
-fun split P =
-  let fun F buf ret [] = rev (rev buf :: ret)
-        | F buf ret (x :: L) =
-            if P x then F [] (rev buf :: ret) L
-                   else F (x :: buf) ret L
-   in F [] []
-  end *)
-
-val all_non_declarative_tok =
-  let open Token
-      val non_declaratives = ["where", "of", "OF", "simplified", "symmetric", "THEN",
-                              "unfolded", "folded"]
-   in forall (fn [] => true
-               | (tok :: _) => member (op =) non_declaratives (content_of tok))
-  end
-
-fun decls_of (MHAVE (args, _)) = map (Binding.name_of o fst o fst) (#3 args)
-  | decls_of (MCFG_FACTS notes) = map_filter (fn ((B,atts), _) =>
-                                      if all_non_declarative_tok atts
-                                      then SOME (Binding.name_of B)
-                                      else NONE ) notes
-  | decls_of _ = []
-
-val move_lemma =
-  build_scope
-#>segment_pass_scp (
-  let fun pass [] = []
-        | pass ((cur as SCOPE (_, x, _)) :: L) = try_move cur x L
-        | pass ((cur as SELEMT (_,x)) :: L) = try_move cur x L
-        | pass (x :: L) = x :: pass L
-      and try_move cur x L =
-            let val L' = pass L
-                val decls = decls_of x
-             in if null decls
-             then cur :: L'
-             else case scopes_of_fact (member (op =) decls) L
-             of SOME (target :: _) =>
-                  ( target := cur :: !target
-                  ; L' )
-              | _ => cur :: L'
-            end
-   in pass
-  end
-) #> restore_scope
 
 (* Calculation *)
 
@@ -4945,6 +4909,131 @@ val refinement = linear_passm NONE (
 
 (** Pass VII - Post Refinement **)
 
+(* Move Lemmas to Where They are Used *)
+
+datatype scope = SCOPE  of scope list Unsynchronized.ref
+                         * mast
+                         * (mast' -> Minilang.state option * mast)
+               | SELEMT of (Minilang.state option * mast)
+               | SBRS   of Minilang.state option * scope list list
+
+fun build_scope [] = []
+  | build_scope ((s, x as MCONSIDER (args, body)) :: L) =
+         SCOPE (Unsynchronized.ref (build_scope body), x,
+                fn B => (s, MCONSIDER (args, B)))
+      :: build_scope L
+  | build_scope ((s, x as MHAVE (args, body)) :: L) =
+         SCOPE (Unsynchronized.ref (build_scope body), x,
+                fn B => (s, MHAVE (args, B)))
+      :: build_scope L
+(*  | build_scope ((s, x as MSTEP (args, body)) :: L) =
+         SCOPE (Unsynchronized.ref (build_scope body), x,
+                fn B => (s, MSTEP (args, B)))
+      :: build_scope L *)
+  | build_scope ((s, x as MOPEN_MODULE (args, body)) :: L) =
+         SCOPE (Unsynchronized.ref (build_scope body), x,
+                fn B => (s, MOPEN_MODULE (args, B)))
+      :: build_scope L
+(*  | build_scope ((s, x as MCALC (args, body)) :: L) =
+         SCOPE (Unsynchronized.ref (build_scope body), x,
+                fn B => (s, MCALC (args, B)))
+      :: build_scope L *)
+  | build_scope ((s, MBRANCH_SUBGOALS brs) :: L) =
+         SBRS (s, map build_scope brs)
+      :: build_scope L
+  | build_scope (x :: L) = SELEMT x :: build_scope L
+
+fun restore_scope [] = []
+  | restore_scope (SCOPE (scopes, _, re) :: L) = re (restore_scope (!scopes)) :: restore_scope L
+  | restore_scope (SELEMT x :: L) = x :: restore_scope L
+  | restore_scope (SBRS (s, brs) :: L) = (s, MBRANCH_SUBGOALS (map restore_scope brs)) :: restore_scope L
+
+(*P returns whether the fact occurs or not*)
+fun scopes_of_fact P  =
+  let fun join _ []  = NONE
+        | join _ [x] = SOME x
+        | join x _  = SOME x
+      fun scope_of scps (SCOPE (scp, x, _)) =
+          let val ret = map_filter (scope_of (scp::scps)) (!scp)
+           in if exists_fact_inm P x
+            then SOME (scp::scps)
+            else join scps ret
+          end
+        | scope_of scps (SELEMT (_, x)) =
+            if exists_fact_inm P x then SOME scps else NONE
+        | scope_of scps (SBRS (_, brs)) =
+            (join scps o map_filter (join scps o map_filter (scope_of scps))) brs
+   in join [] o map_filter (scope_of [])
+  end
+
+fun segment_pass_scp F =
+  let fun ivk scps = F (pass scps)
+      and pass [] = []
+        | pass (SCOPE (scps, decls, R) :: L) =
+            let val L' = pass L
+             in scps := ivk (!scps)
+              ; SCOPE (scps, decls, R) :: L'
+             end
+        | pass (SBRS (s, brs) :: L) =
+            let val L' = pass L
+                fun rmap [] = []
+                  | rmap (x :: L) =
+                      let val L' = rmap L
+                       in ivk x :: L'
+                      end
+             in SBRS (s, rmap brs) :: L'
+            end
+        | pass (x :: L) = x :: pass L
+   in ivk
+  end
+
+(*
+fun split P =
+  let fun F buf ret [] = rev (rev buf :: ret)
+        | F buf ret (x :: L) =
+            if P x then F [] (rev buf :: ret) L
+                   else F (x :: buf) ret L
+   in F [] []
+  end *)
+
+val all_non_declarative_tok =
+  let open Token
+      val non_declaratives = ["where", "of", "OF", "simplified", "symmetric", "THEN",
+                              "unfolded", "folded"]
+   in forall (fn [] => true
+               | (tok :: _) => member (op =) non_declaratives (content_of tok))
+  end
+
+fun decls_of (MHAVE (args, _)) = map (Binding.name_of o fst o fst) (#3 args)
+  | decls_of (MCFG_FACTS notes) = map_filter (fn ((B,atts), _) =>
+                                      if all_non_declarative_tok atts
+                                      then SOME (Binding.name_of B)
+                                      else NONE ) notes
+  | decls_of _ = []
+
+val move_lemma =
+  build_scope
+#>segment_pass_scp (
+  let fun pass [] = []
+        | pass ((cur as SCOPE (_, x, _)) :: L) = try_move cur x L
+        | pass ((cur as SELEMT (_,x)) :: L) = try_move cur x L
+        | pass (x :: L) = x :: pass L
+      and try_move cur x L =
+            let val L' = pass L
+                val decls = decls_of x
+             in if null decls
+             then cur :: L'
+             else case scopes_of_fact (member (op =) decls) L
+             of SOME (target :: _) =>
+                  ( target := cur :: !target
+                  ; L' )
+              | _ => cur :: L'
+            end
+   in pass
+  end
+) #> restore_scope
+
+
 (* GEN SIMP *)
 
 val SIMP_LIKE = ["simp", "auto", "simp_all", "clarsimp"]
@@ -4994,6 +5083,7 @@ fun translate (s, toks) =
    |> validate ps "Validation Fail: assign_factname" (*NECESSARY*)
    |> resolve_this                                   (*preserves states*)
    |> norm_FROM_WITH_USING                           (*preserves states*)
+   |> replace_fact_expr'                             (*preserves states*)
    |> desugar_thesis
    |> rewrite_subgoal
    (* |> validate ps "Validation Fail: norm_FROM_WITH_USING" (*UNNECESSARY*) *)
@@ -5028,12 +5118,12 @@ fun translate_m (s, toks) =
       val ctxt0 = Proof.context_of ps
       val ret = Unsynchronized.ref []
       val _ = Minilang.set_reporter item_reporter
+      fun report cat rep =
+            if mast_cheat' rep then rep else (ret := (cat, rep) :: !ret ; rep)
       val raw = trans_to_minlang (translate (s, toks)) s0 |> fst
              |> norm_Mtac                            (*destroys state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
-      fun report cat rep =
-            if mast_cheat' rep then () else ret := (cat, rep) :: !ret
-      val _ = report "raw" raw
+             |> report "raw"
       val refined = raw
              |> refinement                           (*preserves state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
@@ -5043,14 +5133,18 @@ fun translate_m (s, toks) =
               then raise Translation_Fail "Some proof obligation fails"
               else ( warning (print_mast true refined);
                      ret := ("refined", refined) :: !ret )
-      val ord_raw = raw
+      val ord_raw = \<^try>\<open> raw
              |> move_lemma                           (*destroys state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
-      val _ = report "reord_raw" ord_raw
-      val ord_refined = refined
+             |> report "reord_raw" 
+             |> SOME
+           catch _ => NONE\<close>
+      val ord_refined = \<^try>\<open> refined
              |> move_lemma
              |> validatem ctxt0 (Minilang.INIT' ps)
-      val _ = report "reord_refined" ord_refined
+             |> report "reord_refined"
+             |> SOME
+           catch _ => NONE \<close>
       val _ = warning (String.concatWith " " ("produce: " :: map (fst) (!ret)))
    in !ret
   end

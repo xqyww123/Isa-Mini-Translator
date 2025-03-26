@@ -59,7 +59,7 @@ lemma polyfun_extremal_lemma:
     fixes c :: "nat \<Rightarrow> 'a::real_normed_div_algebra"
   assumes "0 < e"
   shows "\<exists>M. \<forall>z. M \<le> norm(z) \<longrightarrow> norm (\<Sum>i\<le>n. c(i) * z^i) \<le> e * norm(z) ^ (Suc n)"
-                           
+                             
   ML_val \<open>val _ = MinLang_Translator.translate'm @{Isar.state}
 "proof (induct n)\n\
 \  case 0 with assms\n\
@@ -186,7 +186,7 @@ apply ((linarith)[1])
 mqed 
 (*NEXT*)      
 mproof       
-case  2
+case  2 
 show "n choose k \<le> n choose n div 2" 
 apply ((use "2" in \<open> intro binomial_antimono \<close>)[1])
 (*3 subgoals*)
@@ -195,13 +195,13 @@ apply ((simp)[1])
 apply ((simp)[1])  
 (*NEXT*)    
 apply ((simp)[1])
-(*end 3 subgoals*) 
+(*end 3 subgoals*)  
 .   
 mqed       
 (*NEXT*) 
 apply (simp_all add : binomial_eq_0)
 (*end 3 subgoals*) 
-.  
+.   
 mqed     
 .               
                         
