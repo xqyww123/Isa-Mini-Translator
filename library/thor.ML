@@ -1,6 +1,6 @@
 signature THOR = sig
 
-val translate_thor : Toplevel.state -> (Toplevel.transition * Command_Span.span) list -> string
+val translate_thor : bool -> Toplevel.state -> (Toplevel.transition * Command_Span.span) list -> string
 
 end
 
@@ -15,63 +15,6 @@ fun unsuported' (Command_Span.Command_Span (name, _)) =
         name
   | unsuported' _ = false
 fun unsuported (Command_Span.Span (k, _)) = unsuported' k
-
-val is_tactic =
-  let datatype ele = FWD | BWD
-      fun pop _ [] = raise MinLang_Translator.Unsupported "Malformed Source"
-        | pop k (k'::SK) = if k = k' then SK else raise MinLang_Translator.Unsupported "Malformed Source"
-      fun pass [] _ = true
-        | pass stack ((_, Command_Span.Span (Command_Span.Command_Span (name, _), _)) :: L)
-            = (case name
-                 of "proof" => false
-                  | "qed"   => false
-                  | "have"  => false
-                  | "show"  => false
-                  | "hence" => false
-                  | "thus"  => false
-                  | "consider"  => false
-                  | "obtain"    => false
-                  | "interpret" => false
-                  | "subgoal"   => false
-                  | "by"    => pass (pop BWD stack) L
-                  | "done"  => pass (pop BWD stack) L
-                  | "apply_end" => pass (pop BWD stack) L
-                  | "."     => pass (pop BWD stack) L
-                  | ".."    => pass (pop BWD stack) L
-                  |  _      => pass stack L
-              )
-        | pass _ [] = false
-        | pass _ X = raise Translation_Fail "Malformed Source"
-   in pass [BWD]
-  end
-
-val remove_tactic =
-  let datatype ele = FWD | BWD
-      fun pop _ [] = raise MinLang_Translator.Unsupported "Malformed Source"
-        | pop k (k'::SK) = if k = k' then SK else raise MinLang_Translator.Unsupported "Malformed Source"
-      fun pass [] ret = ret
-        | pass stack ((_, Command_Span.Span (Command_Span.Command_Span (name, _), _)) :: L)
-            = (case name
-                 of "proof" => pass (FWD :: stack) L
-                  | "qed"   => pass (stack |> pop FWD |> pop BWD) L
-                  | "have"  => pass (BWD :: stack) L
-                  | "show"  => pass (BWD :: stack) L
-                  | "hence" => pass (BWD :: stack) L
-                  | "thus"  => pass (BWD :: stack) L
-                  | "consider"  => pass (BWD :: stack) L
-                  | "obtain"    => pass (BWD :: stack) L
-                  | "interpret" => pass (BWD :: stack) L
-                  | "subgoal"   => pass (BWD :: stack) L
-                  | "by"    => pass (pop BWD stack) L
-                  | "done"  => pass (pop BWD stack) L
-                  | "apply_end" => pass (pop BWD stack) L
-                  | "."     => pass (pop BWD stack) L
-                  | ".."    => pass (pop BWD stack) L
-                  |  _      => pass stack L
-              )
-        | pass _ X = raise Translation_Fail "Malformed Source"
-   in pass [BWD]
-  end
 
 val raw_sledgehammer = [fst (Token.make ((0,0),"by") Position.none),
                         fst (Token.make ((2,0),"raw_sledgehammers") Position.none)]
@@ -94,7 +37,7 @@ fun concat_strs pstrs =
 
 val raw_SH_str = mkstr raw_sledgehammer_span
 
-fun translate_thor stat commands =
+fun translate_thor improved stat commands =
   let fun translate _ [] = []
         | translate stat (all_commands as (tr, span) :: commands) =
             let val aa = concat_strs (map (mkstr o snd) all_commands)
@@ -105,10 +48,39 @@ fun translate_thor stat commands =
                     is_tactic all_commands
             then let val ctxt = Toplevel.context_of stat
                      val sequent = #goal (Proof.goal (Toplevel.proof_of stat))
+
+                     val override =
+                        if improved
+                        then let
+                             val origin_prf = extract_proof all_commands
+                                           |> map ( filter Token.is_proper
+                                                  o Command_Span.content o snd)
+                             val origin_ast = MinLang_Translator.parse_isar (stat, origin_prf)
+                             val (w,wo) = MinLang_Translator.collect_facts origin_ast
+                          in { add = w, del = wo, only = false }
+                         end
+                        else Sledgehammer_Fact.no_fact_override
                      val sequent_opt' = try (snd o
-                                Phi_Sledgehammer_Solver.all_auto false
-                                    Sledgehammer_Fact.no_fact_override NONE ctxt) sequent
-                     val sh_str = raw_SH_str
+                                Phi_Sledgehammer_Solver.all_auto improved override NONE ctxt) sequent
+                     val sh_str =
+                        if improved
+                        then let
+                             val add = (if null (#add override)
+                                        then []
+                                        else [" add: "])
+                                     @ print_facts (#add override)
+                             val del = (if null (#del override)
+                                        then []
+                                        else [" del: "])
+                                     @ print_facts (#del override)
+                             val code = String.concat (
+                                           "by (auto_sledgehammer"
+                                        :: add
+                                         @ del
+                                         @ [")"])
+                          in (Position.none, code)
+                         end
+                        else raw_SH_str
                   in case sequent_opt'
                   of SOME sequent' => let
                            val meth = Method.Basic (K (Method.METHOD (K (K (Seq.single sequent')))))

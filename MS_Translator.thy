@@ -13,10 +13,8 @@ declare [[ML_debugger]]
 
 ML_file \<open>library/translator_auxcmds.ML\<close>
 ML_file \<open>library/oneshot_ref.ML\<close>
+ML_file \<open>library/aux.ML\<close>
 ML_file \<open>library/translator.ML\<close>
 ML_file \<open>library/thor.ML\<close>
-   
-lemma \<open>True \<and> True\<close> and \<open>True \<and> True\<close> and True
-  by raw_sledgehammers
 
 end

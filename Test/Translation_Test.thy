@@ -201,13 +201,13 @@ mqed
 (*NEXT*) 
 apply (simp_all add : binomial_eq_0)
 (*end 3 subgoals*) 
-.   
+.    
 mqed      
 .                
-                        
+                         
 ML \<open>ML_Translator_Top.init_translator (Path.explode "/tmp/xxx")
                                       (ML_Translator_Top.interactive_reporter ())\<close>
-  
+ 
 
 
 ML \<open>ML_Translator_Top.translate_file "/home/xero/repo/Isabelle2024/src/HOL/Library/Sublist.thy"\<close>

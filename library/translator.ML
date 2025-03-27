@@ -73,7 +73,7 @@ datatype ast =
 
 (* Shared *)
   | UNFOLD of fact list
-  | TACTIC of Method.text * fact list (*using*) * Time.time option
+  | TACTIC of Method.text * (fact list (*using*) * fact list (*not using*)) * Time.time option
   | DEFINE   of var list * attr_statement * var list
   | LET      of (string list * string) list
   | NOTATION of Syntax.mode * (string * mixfix) list
@@ -113,7 +113,7 @@ datatype mast =
   | MSIMP   of (*with*) fact list * (*without*) fact list
 (* Shared *)
   | MUNFOLD of fact list
-  | MTACTIC of Method.text * (*with*) fact list * Time.time option
+  | MTACTIC of Method.text * ((*with*) fact list * (*without*) fact list) * Time.time option
   | MDEFINE   of var list * attr_statement * var list
   | MLET      of (string list * string) list
   | MNOTATION of Syntax.mode * (string * mixfix) list
@@ -150,7 +150,8 @@ val print_ast  :  ast' -> string
 val print_mast : bool (*prints response*) -> mast' -> string
 
 val parse_isar : Toplevel.state * Token.src list -> ast'
-val collect_facts : ast' -> (Facts.ref * Token.src list) list
+val collect_facts : ast' -> (Facts.ref * Token.src list) list (*using*)
+                          * (Facts.ref * Token.src list) list (*not using*)
 
 end
 
@@ -195,6 +196,7 @@ fun foldl1' _ [] = []
   | foldl1' F L = foldl1 F L
 
 val merge_facts = foldl1' (merge fact_eq)
+fun merge_facts2 facts = (merge_facts (map fst facts), merge_facts (map snd facts))
 
 local
 val thms = Scan.repeat Parse.thm
@@ -328,20 +330,20 @@ fun tac_can_refine [] = NONE
          | "this"     => SOME ([], [])
          | _ => NONE )
 
-fun facts_in_tac [] = []
+fun facts_in_tac [] = ([] (*to use*), [] (*to not use*))
   | facts_in_tac (tok :: toks) =
     ( case Token.content_of tok
-        of "auto"   => auto  toks |> fst |> fst
-         | "metis"  => metis toks |> fst
-         | "meson"  => meson toks |> fst
-         | "smt"    => smt   toks |> fst
-         | "simp"   => simp  toks |> fst |> fst
-         | "fastforce" => simp  toks |> fst |> fst
-         | "insert" => thms  toks |> fst
-         | "blast"  => simp  toks |> fst |> fst
-         | "fast"   => simp  toks |> fst |> fst
+        of "auto"   => auto  toks |> fst
+         | "metis"  => metis toks |> fst |> rpair []
+         | "meson"  => meson toks |> fst |> rpair []
+         | "smt"    => smt   toks |> fst |> rpair []
+         | "simp"   => simp  toks |> fst
+         | "fastforce" => simp  toks |> fst
+         | "insert" => thms  toks |> fst |> rpair []
+         | "blast"  => simp  toks |> fst
+         | "fast"   => simp  toks |> fst
          | "(" => facts_in_tac toks
-         | _ => [] )
+         | _ => ([],[]) )
 (*
 and facts_in_facts facts
       = merge_facts (facts :: map (merge_facts o map facts_in_attr' o snd) facts)
@@ -358,14 +360,14 @@ and facts_in_attr' tok = facts_in_attr (tok @ [Token.eof])
 *)
 
 fun facts_in_method (Method.Source toks) = facts_in_tac (toks @ [Token.eof])
-  | facts_in_method (Method.Combinator (_, _, tacs)) = merge_facts (map facts_in_method tacs)
-  | facts_in_method _ = []
+  | facts_in_method (Method.Combinator (_, _, tacs)) = merge_facts2 (map facts_in_method tacs)
+  | facts_in_method _ = ([], [])
 
 end
 
 val keywords = Keyword.no_major_keywords (Thy_Header.get_keywords \<^theory>)
 fun facts_in_SH_return src =
-  if src = "" then []
+  if src = "" then ([], [])
   else let
       val ((m, _), _) =
           Input.string src
@@ -458,8 +460,6 @@ type structured_statement' = var list       (*vars*)
                            * attr_statement (*shows*)
 
 exception Parse_Fail of Token.src list
-exception Translation_Fail of string
-exception Unsupported of string
 exception Bad_Source
 
 datatype var_inst = VI_Fix of string
@@ -515,7 +515,7 @@ datatype ast =
 
 (* Shared *)
   | UNFOLD of fact' list
-  | TACTIC of Method.text * fact list (*using*) * Time.time option
+  | TACTIC of Method.text * (fact list (*using*) * fact list (*not using*)) * Time.time option
   | DEFINE   of var list * attr_statement * var list
   | LET      of (string list * string) list
   | NOTATION of Syntax.mode * (string * mixfix) list
@@ -562,7 +562,7 @@ datatype mast =
   | MSIMP   of (*with*) fact list * (*without*) fact list
 (* Shared *)
   | MUNFOLD of fact' list
-  | MTACTIC of Method.text * (*with*) fact' list * Time.time option
+  | MTACTIC of Method.text * ((*with*) fact' list * (*without*) fact' list) * Time.time option
   | MDEFINE   of var list * attr_statement * var list
   | MLET      of (string list * string) list
   | MNOTATION of Syntax.mode * (string * mixfix) list
@@ -1278,9 +1278,11 @@ let fun map_ast (s, PROOF (tac, body))
                         , time ))
       | map_ast (s, APPLY_END tac)
           = (s, APPLY_END (map_tac_token'gen (F (Option.map Proof.context_of s)) tac))
-      | map_ast (s, TACTIC (tac, using, t))
+      | map_ast (s, TACTIC (tac, (using, not_using), t))
           = (s, TACTIC (map_tac_token'gen (F (Option.map Proof.context_of s)) tac,
-                        map_facts'gen (G (Option.map Proof.context_of s)) using, t))
+                        (map_facts'gen (G (Option.map Proof.context_of s)) using,
+                         map_facts'gen (G (Option.map Proof.context_of s)) not_using),
+                        t))
       | map_ast (s, NOTE facts)
           = let val ctxt = Option.map Proof.context_of s
              in (s, NOTE (map (fn (AT, facts') =>
@@ -1320,8 +1322,10 @@ fun exists_fact_in P (PROOF (tac, _)) = exists_tac_token P tac
         (case t2 of SOME tac => exists_tac_token P tac
                   | NONE => false)
   | exists_fact_in P (APPLY_END tac) = exists_tac_token P tac
-  | exists_fact_in P (TACTIC (tac, using, _))
-      = exists (exists_fact_fact P) using orelse exists_tac_token P tac
+  | exists_fact_in P (TACTIC (tac, (using, not_using), _))
+      = exists (exists_fact_fact P) using orelse
+        exists (exists_fact_fact P) not_using orelse
+        exists_tac_token P tac
   | exists_fact_in _ _ = false
 
 val exists_ast_fact = exists_ast o exists_fact_in
@@ -1336,8 +1340,10 @@ fun exists_fact_inm P (MCRUSH (_, (w,wo))) =
   | exists_fact_inm P (MEND ((_,_,w,wo), _)) =
       exists (exists_fact_fact P) w orelse exists (exists_fact_fact P) wo
   | exists_fact_inm P (MUNFOLD w) = exists (exists_fact_fact P) w
-  | exists_fact_inm P (MTACTIC (m,u,_)) =
-      exists_tac_token P m orelse exists (exists_fact_fact P) u
+  | exists_fact_inm P (MTACTIC (m,(u,nu),_)) =
+      exists_tac_token P m orelse
+      exists (exists_fact_fact P) u orelse
+      exists (exists_fact_fact P) nu
   | exists_fact_inm P (MRULE (w,wo)) =
       exists (exists_fact_fact P) w orelse exists (exists_fact_fact P) wo
   | exists_fact_inm P (MCFG_FACTS facts) =
@@ -1359,24 +1365,25 @@ fun exists_mast_fact' P = exists (exists_mast_fact P o snd)
 
 
 fun collect_facts ast = let
-     fun add facts ret = merge fact_eq (ret, facts)
+     fun add (facts1, facts2) (ret1, ret2) =
+             (merge fact_eq (ret1, facts1), merge fact_eq (ret2, facts2))
   in linear_fold (
-       fn (_, USING facts) => add facts
-        | (_, WITH  facts) => add facts
-        | (_, FROM  facts) => add facts
+       fn (_, USING facts) => add (facts, [])
+        | (_, WITH  facts) => add (facts, [])
+        | (_, FROM  facts) => add (facts, [])
         | (_, ISAR_BY ((m1, SOME m2),_)) =>
-              add (merge_facts [facts_in_method m1, facts_in_method m2])
+              add (merge_facts2 [facts_in_method m1, facts_in_method m2])
         | (_, ISAR_BY ((m1, NONE),_)) => add (facts_in_method m1)
         | (_, APPLY_END m) => add (facts_in_method m)
-        | (_, ALSO  facts) => add facts
-        | (_, FINALLY (facts, _)) => add facts
-        | (_, UNFOLD facts) => add facts
+        | (_, ALSO  facts) => add (facts, [])
+        | (_, FINALLY (facts, _)) => add (facts, [])
+        | (_, UNFOLD facts) => add (facts, [])
         | (_, TACTIC (m, facts, _)) =>
                  add (facts_in_method m)
               #> add facts
-        | (_, NOTE facts) => add (maps snd facts)
+        | (_, NOTE facts) => add (maps snd facts, [])
         | _ => I
-     ) ast []
+     ) ast ([], [])
  end
 
 fun collect_mfacts ast = let
@@ -1387,7 +1394,7 @@ fun collect_mfacts ast = let
         | (_, MEND ((_,_,w,wo), _)) => add (w,wo)
         | (_, MSIMP wwo) => add wwo
         | (_, MUNFOLD w) => add (w,[])
-        | (_, MTACTIC (_,w,_)) => add (w,[])
+        | (_, MTACTIC (_,w,_)) => add w
         | (_, MRULE (w,w')) => add (merge fact_eq (w,w'), [])
         | (_, MCFG_FACTS w) => add (maps snd w,[])
         | (_, MINSERT w) => add (w,[])
@@ -1418,18 +1425,6 @@ fun print_method (Method.Source toks) = print_toks toks
       else error "Fail to print internal methods"
   | print_method (Method.Combinator _) = error "Bad method combinator"
 
-fun print_mixfix NoSyn = []
-  | print_mixfix (Mixfix (s,is,i,_)) =
-      [" (", Input.string_of s, " ["] @ map string_of_int is @ ["] ", string_of_int i, ")"]
-  | print_mixfix (Infix (s,i,_)) =
-      [" (infix ", Input.string_of s, " ", string_of_int i, ")"]
-  | print_mixfix (Infixl (s,i,_)) =
-      [" (infixl ", Input.string_of s, " ", string_of_int i, ")"]
-  | print_mixfix (Infixr (s,i,_)) =
-      [" (infixr ", Input.string_of s, " ", string_of_int i, ")"]
-  | print_mixfix (Binder (s,i,j,_)) =
-      [" (binder ", Input.string_of s, " [", string_of_int i, "] ", string_of_int j, ")"]
-  | print_mixfix (Structure _) = [" (structure)"]
 
 
 fun print_ty_raw' (Type (N, TS)) = ["("] @ maps print_ty_raw' TS @ [") ", N]
@@ -1514,36 +1509,8 @@ fun print_prop ctxt tm =
 val quote_space = Phi_Help.quote_space
 val quote_fact  = Phi_Help.quote_fact
 
-fun print_var (v, SOME T, synt) = [Binding.name_of v, " :: ", quote_space (trim_markup T)] @ print_mixfix synt
-  | print_var (v, NONE  , synt) = [Binding.name_of v] @ print_mixfix synt
-fun print_vars vs = implode_with " and " (map print_var vs)
-fun print_for  [] = []
-  | print_for  vs = " for " :: print_vars vs
-fun print_space_vars vs = implode_with " " (map print_var vs)
 
-fun print_attr [] = []
-  | print_attr attrs =
-        ["["]
-      @ implode_with ", " (map (implode_with " " o (map (single o Token.unparse))) attrs)
-      @ ["]"]
-fun print_attrbind (B,attrs) =
-      if Binding.is_empty B
-      then print_attr attrs
-      else quote_space (Binding.name_of B) :: print_attr attrs
-fun print_attrbind' (B,attrs) =
-      if Binding.is_empty B andalso null attrs then []
-      else print_attrbind (B,attrs) @ [": "]
 
-fun print_iv' (Facts.FromTo (i,j)) = [string_of_int i, "-", string_of_int j]
-  | print_iv' (Facts.From i) = [string_of_int i, "-"]
-  | print_iv' (Facts.Single i) = [string_of_int i]
-fun print_iv NONE = []
-  | print_iv (SOME ivs) = "(" :: implode_with "," (map print_iv' ivs) @ [")"]
-
-fun print_factref (Facts.Named ((N,_),iv)) = quote_fact N :: print_iv iv
-  | print_factref (Facts.Fact expr) = ["\<open>", trim_markup expr, "\<close>"]
-fun print_fact (rf,attrs) = print_factref rf @ print_attr attrs
-val print_facts = implode_with " " o map print_fact
 
 fun print_term tm = [quote_space (trim_markup tm)]
 fun print_statement (tm, [])   = print_term tm
@@ -1673,7 +1640,7 @@ val print_ast =
         | print ((_,  DOT) :: L) = ".\n"  :: print L
         | print ((_, UNFOLD facts) :: L) =
             "unfolding " :: implode_with " " (map print_fact facts) @ "\n" :: print L
-        | print ((_, TACTIC (tac, using, _)) :: L) =
+        | print ((_, TACTIC (tac, (using, _), _)) :: L) =
             (if null using then [] else "using " :: print_facts using)
             @ " apply (" :: print_method tac @ ")\n" :: print L
         | print ((_, DEFINE (vs, astmt, fixes)) :: L) =
@@ -1865,7 +1832,7 @@ val restore_case = restore_case
 
 val initial_parsers = Symtab.make [
 
-  ("apply",      tactic_parser (fn m => TACTIC (m, [], NONE))),
+  ("apply",      tactic_parser (fn m => TACTIC (m, ([], []), NONE))),
   ("proof",      proof_parser),
   ("qed"  ,      qed_parser),
   ("apply_end",  tactic_parser APPLY_END),
@@ -2004,7 +1971,7 @@ fun eval_single (CASE arg) s
   | eval_single (DEFINE (a,b,c)) s = Proof.define_cmd a c b s
   | eval_single (UNFOLD facts) s
       = Proof.unfolding_cmd [facts] s
-  | eval_single (TACTIC (tac, using, time)) s
+  | eval_single (TACTIC (tac, (using, _), time)) s
       = (  s
         |> not (null using) ? Proof.using_cmd [using]
         |> Timeout.apply (the_default default_time time) (
@@ -2109,7 +2076,7 @@ fun eval_singlem (MCRUSH arg) s = Minilang.CRUSH (apsnd (mk_with_clause (Minilan
   | eval_singlem (MCONSIDER (args, _)) s = Minilang.CONSIDER args s
   | eval_singlem (MUNFOLD facts) s =
       Minilang.UNFOLD (Attrib.eval_thms (Minilang.context_of s) facts) s
-  | eval_singlem (MTACTIC (tac, using, time)) s = Minilang.APPLY'' time using tac s
+  | eval_singlem (MTACTIC (tac, (using,_), time)) s = Minilang.APPLY'' time using tac s
   | eval_singlem (MDEFINE (a,b,c)) s = Minilang.DEFINE'' a b c s
   | eval_singlem (MLET args) s = Minilang.LET'' args s
   | eval_singlem (MNOTATION args) s = uncurry Minilang.NOTATION'' args s
@@ -2218,16 +2185,17 @@ and eval s [] = (s, [])
        |> apsnd (prepend (SOME s, TACTIC (m, u, SOME t)))
       end handle ESORRY E =>
         let val facts = collect_facts L
-         in rescue (merge_facts [u, facts]) s L E
+         in rescue (merge_facts2 [u, facts]) s L E
         end )
   | eval s ((_, x) :: L) =
       ( DO s x (eval_single x) L
        handle ESORRY E => rescue (collect_facts L) s L E)
-and rescue using s L E =
+and rescue (using, not_using) s L E =
   if is_single_prf_mode L
   then let val ctxt = Proof.context_of s
            val using' = filter (can (Attrib.eval_thms ctxt o single)) using
-           val sorry = TACTIC (method_sorry, using', NONE)
+           val not_using' = filter (can (Attrib.eval_thms ctxt o single)) not_using
+           val sorry = TACTIC (method_sorry, (using', not_using'), NONE)
            val s'  = eval_single sorry s
            val s'' = eval_single DOT s'
     in (s'', [(SOME s, sorry), (SOME s', DOT)])
@@ -2249,7 +2217,7 @@ fun DO s ast F L  =
          in (eval_singlem mast s, [(SOME s, mast)])
             handle Minilang.OPR_FAIL (Minilang.PROOF_FAIL, err) =>
             let val mast = MEND ((ty,vs,w,wo), SOME err)
-                val s' = s |> eval_singlem (MTACTIC (method_sorry, w, NONE))
+                val s' = s |> eval_singlem (MTACTIC (method_sorry, ([],[]), NONE))
                            |> eval_singlem mast
              in (s', [(SOME s, mast)])
             end
@@ -2280,14 +2248,16 @@ and evalm s [] = (s, [])
       let val _ = if null L then () else error "BUG evalm L not nil"
           val store = SH_prfs ()
           val _ = store := []
-          val (s', w', err) =
+          val (s', w', wo', err) =
               let val (s', err) = (eval_singlem ast s, NONE)
-                  val w' = foldl1' (merge fact_eq) (map facts_in_SH_return (!store))
-               in (s', w', err)
+                  val w'wo' = map facts_in_SH_return (!store)
+                  val w'  = foldl1' (merge fact_eq) (map fst w'wo')
+                  val wo' = foldl1' (merge fact_eq) (wo :: map snd w'wo')
+               in (s', w', wo', err)
               end handle Minilang.OPR_FAIL (Minilang.PROOF_FAIL, err) =>
-                    let val s' = s |> eval_singlem (MTACTIC (method_sorry, w, NONE))
+                    let val s' = s |> eval_singlem (MTACTIC (method_sorry, ([],[]), NONE))
                                    |> eval_singlem ast
-                     in (s', w, SOME err)
+                     in (s', w, wo, SOME err)
                     end
           val _ = store := []
           val ast' = MEND ((ty,vs,w',wo), err)
@@ -2379,7 +2349,7 @@ fun print_mast print_response =
            :: "UNFOLD "
            :: print_facts facts
             @ newline x i k L
-        | print i k ((x as (_, MTACTIC (tac, using, _))) :: L) =
+        | print i k ((x as (_, MTACTIC (tac, (using,_), _))) :: L) =
               indent_of i
            :: "APPLY ("
            :: print_method tac
@@ -2845,7 +2815,7 @@ val norm_FROM_WITH_USING = linear_pass' NONE (fn history => recursive (
        | (s, USING facts) :: (_, OPEN_MODULE (stmt, Prf)) :: L =>
          (s, OPEN_MODULE (stmt, (restore_using Prf, USING facts) :: Prf)) :: L
        | (s, USING facts) :: (s2, DOT) :: L =>
-         (s, USING facts) :: (s2, TACTIC (method_this, [], NONE)) :: (NONE, DOT) :: L
+         (s, USING facts) :: (s2, TACTIC (method_this, ([], []), NONE)) :: (NONE, DOT) :: L
        | (s, us as USING _) :: (_, incl as INCLUDING _) :: L =>
          (s, incl) :: (Option.map (eval_single incl) s, us) :: L
        | (s, USING facts) :: (_, UNFOLD facts') :: L =>
@@ -3134,10 +3104,10 @@ fun clean_tac [] = []
   | clean_tac (m :: L) = m :: clean_tac L
 
 val clean_tac_pass = linear_pass NONE (
-  fn (s, TACTIC (tac, [], time)) :: L =>
+  fn (s, TACTIC (tac, using, time)) :: L =>
       (case clean_tac [tac]
          of []  => L
-          | [t] => (s, TACTIC (t, [], time)) :: L
+          | [t] => (s, TACTIC (t, using, time)) :: L
           | _   => error "BUG")
    | L => L
   )
@@ -3146,42 +3116,46 @@ val norm_prf1 = linear_pass NONE (
   fn org as (s, PROOF (tac, prf)) :: L =>
       if is_no_tac tac
       then org
-      else (s, TACTIC (tac, [], NONE)) :: (Option.map (Proof.refine_singleton tac) s, PROOF (no_tac, prf)) :: L
+      else (s, TACTIC (tac, ([],[]), NONE)) :: (Option.map (Proof.refine_singleton tac) s, PROOF (no_tac, prf)) :: L
    | (s, ISAR_BY ((tac, NONE), time)) :: L =>
-     (s, TACTIC (tac, [], time)) :: (Option.map (eval_single (TACTIC (tac, [], NONE))) s, DOT) :: L
+        (s, TACTIC (tac, ([],[]), time))
+     :: (Option.map (eval_single (TACTIC (tac, ([],[]), NONE))) s, DOT)
+     :: L
    | (s, ISAR_BY ((tac, SOME tac'), time)) :: L =>
-      let val s1 = Option.map (eval_single (TACTIC (tac, [],time))) s
-          val s2 = Option.map (eval_single (TACTIC (tac',[],time))) s1
-       in (s, TACTIC (tac,[],time)) :: (s1, TACTIC (tac',[],time)) :: (s2, DOT) :: L
+      let val s1 = Option.map (eval_single (TACTIC (tac, ([],[]),time))) s
+          val s2 = Option.map (eval_single (TACTIC (tac',([],[]),time))) s1
+       in (s, TACTIC (tac,([],[]),time)) :: (s1, TACTIC (tac',([],[]),time)) :: (s2, DOT) :: L
       end
    | (s, APPLY_END tac) :: L =>
-     (s, TACTIC (tac,[],NONE)) :: (Option.map (eval_single (TACTIC (tac,[],NONE))) s, DOT) :: L
+        (s, TACTIC (tac,([],[]),NONE))
+     :: (Option.map (eval_single (TACTIC (tac,([],[]),NONE))) s, DOT)
+     :: L
    | (s, DONE) :: L =>
      (s, DOT) :: L
    | (s, DDOT) :: L =>
-        (s, TACTIC (standard_tac,[],NONE))
-     :: (Option.map (eval_single (TACTIC (standard_tac,[],NONE))) s, DOT)
+        (s, TACTIC (standard_tac,([],[]),NONE))
+     :: (Option.map (eval_single (TACTIC (standard_tac,([],[]),NONE))) s, DOT)
      :: L
    | (s, UNFOLD facts) :: L =>
      let val toks = tok_unfold :: maps tokenize_fact facts
          val meth = Method.Source toks
-      in if can (eval_single (TACTIC (meth, [], NONE))) (the s)
-       then (s, TACTIC (meth,[],NONE)) :: L
+      in if can (eval_single (TACTIC (meth, ([],[]), NONE))) (the s)
+       then (s, TACTIC (meth,([],[]),NONE)) :: L
        else L
      end
    | L => L)
 #> linear_pass NONE (recursive (
   fn (s, USING facts1) :: (_, USING facts2) :: L =>
      (s, USING (merge (fact'_eq (Proof.context_of (the s))) (facts2, facts1))) :: L
-   | (s, USING facts) :: (_, TACTIC (tac, using, _)) :: L =>
-      (s, TACTIC (tac, facts @ using, NONE)) :: L
+   | (s, USING facts) :: (_, TACTIC (tac, (using, not_using), _)) :: L =>
+      (s, TACTIC (tac, (facts @ using, not_using), NONE)) :: L
    | (s, USING _) :: (_, PROOF prf) :: L =>
      (s, PROOF prf) :: L
-   | (s, TACTIC (tac, using, _)) :: L =>
+   | (s, TACTIC (tac, (using, not_using), _)) :: L =>
       if is_no_tac tac
       then if null using
       then L
-      else (s, TACTIC (Method.Source (tok_insert :: maps tokenize_fact using), [], NONE)) :: L
+      else (s, TACTIC (Method.Source (tok_insert :: maps tokenize_fact using), ([],not_using), NONE)) :: L
       else raise Match
  (*  | (s, USING facts) :: (_, TACTIC (tac, using)) :: L =>
       let fun insert_tac (Method.Source toks) =
@@ -3302,7 +3276,7 @@ fun separate_tac time =
             else tac'
           end
 
-      fun apply using tac s =
+      fun apply (using,_) tac s =
             \<^try>\<open>
             Timeout.apply (the_default default_time time) Seq.pull
                     (  s
@@ -3474,7 +3448,8 @@ fun separate_prf tail =
                  val leaves' =
                         if N > 1
                         then ( List.app (fn lf =>
-                                 set_oneshot (lf, GRDTREE ([(NONE, TACTIC (method_assumption,[],NONE))], []))
+                                 set_oneshot (lf, GRDTREE (
+                                      [(NONE, TACTIC (method_assumption,([],[]),NONE))], []))
                                ) (take (N-1) leaves)
                              ; drop (N-1) leaves)
                         else leaves
@@ -3760,11 +3735,11 @@ fun split_proof s0 prfs =
                              | NONE => error "BUG bb5e")
           then mk_branch_subgoals (
                  map (fn SOME x => [(NONE, MPROOF x)]
-                       | NONE   => [(SOME tail_state, TACTIC (tac_for_1 (the tail_prf), [], NONE))]
+                       | NONE   => [(SOME tail_state, TACTIC (tac_for_1 (the tail_prf), ([],[]), NONE))]
                      ) ordered_prfs' )
           else let
                val grdprfs = init_grdprf false tail_state
-               val _ = case separate_tac tail_time [] (the tail_prf) (grdprfs, tail_state)
+               val _ = case separate_tac tail_time ([],[]) (the tail_prf) (grdprfs, tail_state)
                          of ([], _) => ()
                           |  _      => error "BUG h8KYedJsTC2jm63bGgXzfg"
                val prfs = map conclude_grdprf grdprfs
@@ -4115,11 +4090,12 @@ fun insertion_hs_of hs hs' =
 
 fun trans_to_minlang ast s =
 let
-val end_using = Unsynchronized.ref []
+val end_using = Unsynchronized.ref ([],[])
 
 fun mk_end (ty, vs) s =
-  let val mast = MEND ((ty, vs, !end_using, []), NONE)
-   in end_using := []
+  let val (using, not_using) = !end_using
+      val mast = MEND ((ty, vs, using, not_using), NONE)
+   in end_using := ([],[])
     ; swap (evalm s [(NONE, mast)])
   end
 
@@ -4127,6 +4103,8 @@ fun mk_end' NONE s = ([], s)
   | mk_end' (SOME vs') s = mk_end vs' s
 
 val v_inst_2_mvar = map (fn VI_Fix name => SOME name | _ => NONE)
+
+fun merge2 eq ((A1,A2), (B1,B2)) = (merge eq (A1,B1), merge eq (A2,B2))
 
 fun trans_pass vs [] s = mk_end' vs s
   | trans_pass vs [(_, DOT)] s = mk_end' vs s
@@ -4160,7 +4138,7 @@ fun trans_pass vs [] s = mk_end' vs s
         | "induction" => translate_cases using name tac toks vs L s
         | "nominal_induct" => raise Unsupported "nominal_induct"
         | "msorry" => (
-               end_using := merge fact_eq (!end_using, using)
+               end_using := merge2 fact_eq (!end_using, using)
              ; trans_pass vs [] s )
         | _ => default_tactic_translation time using tac vs L (the si0) si1 s
       end
@@ -4182,7 +4160,7 @@ fun trans_pass vs [] s = mk_end' vs s
           val pre' = map_ast_fact' translate pre
           val prf' = map_ast_fact' translate prf
           val prf'2 = case inserts of [] => prf'
-                         | _ => (fst (hd prf), TACTIC (method_insert1 inserts, [], NONE)) :: prf'
+                         | _ => (fst (hd prf), TACTIC (method_insert1 inserts, ([],[]), NONE)) :: prf'
 
           val (pre'', s'') = trans_pass NONE pre' s'
           val (prf'', s'3) = trans_pass nvs prf'2 s''
@@ -4267,16 +4245,16 @@ fun trans_pass vs [] s = mk_end' vs s
        |> apfst (prepend (SOME s, mast))
       end *)
   | trans_pass _ (X :: _) _ = error "BUG AFSLH"
-and default_tactic_translation time using tac vs L si0 si1 sxx =
+and default_tactic_translation time (using,not_using) tac vs L si0 si1 sxx =
   let val nd = Int.max (~1,
                 case si1 of SOME si1 =>
                                 Thm.nprems_of (#goal (Proof.raw_goal si1))
                               - Thm.nprems_of (#goal (Proof.raw_goal si0))
                           | NONE => ~1)
-      val mast = MTACTIC (tac, using, time)
+      val mast = MTACTIC (tac, (using,not_using), time)
       fun fallback () =
-        let val facts = collect_facts L
-         in end_using := merge fact_eq (!end_using, using @ facts)
+        let val (facts, not_facts) = collect_facts L
+         in end_using := merge2 fact_eq (!end_using, (using @ facts, not_using @ not_facts))
           ; trans_pass vs [] sxx
         end
       val _ = fetch_items ()
@@ -4290,7 +4268,7 @@ and default_tactic_translation time using tac vs L si0 si1 sxx =
    |> apfst (prepend (SOME sxx, mast))
     | NONE => fallback ()
   end
-and translate_cases using tac_name tac toks nvs L s =
+and translate_cases (using,_) tac_name tac toks nvs L s =
   let val consider_rule =
             if tac_name = "cases"
             then case using of [(Facts.Named ((name,_),_), [])] => SOME name
@@ -4385,7 +4363,7 @@ and translate_cases using tac_name tac toks nvs L s =
                     val pre' = map_ast_fact' translate pre0
                     val prf' = map_ast_fact' translate prf0
                     val prf'2 = case inserts of [] => prf'
-                                   | _ => (fst (hd prf'), TACTIC (method_insert1 inserts, [], NONE)) :: prf'
+                                   | _ => (fst (hd prf'), TACTIC (method_insert1 inserts, ([],[]), NONE)) :: prf'
                     val _ = validate_tail L
                     
                     val (body', sxx) = trans_pass NONE (pre' @ prf'2) saa
@@ -4695,21 +4673,21 @@ in
 
 val norm_Mtac = linear_passm NONE (
    recursive (
-     fn (s, MTACTIC (Method.Source (tok :: toks), using, time)) :: L =>
+     fn (s, MTACTIC (Method.Source (tok :: toks), (using, not_using), time)) :: L =>
       (case Token.content_of tok
          of "use" => let
                val ctxt = Minilang.context_of (the s)
                val ((using', tac'), _) = use_parser (toks @ [Token.eof])
                val keywords = Keyword.no_major_keywords (Thy_Header.get_keywords' ctxt)
                val tac = Parse.read_embedded ctxt keywords (Scan.many Token.not_eof) (Token.input_of tac')
-            in (s, MTACTIC (Method.Source tac, using @ using', time)) :: L
+            in (s, MTACTIC (Method.Source tac, (using @ using', not_using), time)) :: L
            end
           | _ => raise Match )
       | _ => raise Match )
 
 #> norm_tac_phase1
 
-#>(fn origin as (s, MTACTIC (Method.Source (tok :: toks), using, time)) :: L =>
+#>(fn origin as (s, MTACTIC (Method.Source (tok :: toks), (using, _), time)) :: L =>
   let val chk = chk (the s) origin
       val ctxt = Minilang.context_of (the s)
       fun mk_rule' thms =
@@ -4862,9 +4840,9 @@ val norm_Mtac = linear_passm NONE (
      (s0, MCHOOSE arg') :: (NONE, MINSERT arg) :: L
 ) L)
 #> linear_passm NONE (
-  fn origin as (s0, MINSERT thmsx) :: (_, MTACTIC (tac, using, time)) :: L =>
+  fn origin as (s0, MINSERT thmsx) :: (_, MTACTIC (tac, (using, not_using), time)) :: L =>
       chk (the s0) origin
-          ( (s0, MTACTIC (tac, merge_facts [thmsx, using], time)) :: L )
+          ( (s0, MTACTIC (tac, (merge_facts [thmsx, using], not_using), time)) :: L )
    | L => L
 )
 
@@ -4878,10 +4856,10 @@ val refinement = linear_passm NONE (
             = if N > 0 orelse is_some cheat
               then SOME (ty, vs, merge_facts [w, w'], merge_facts [wo, wo'])
               else NONE
-        | can_refine N (w,wo) ((_, MTACTIC (Method.Source tac, using, _)) :: L) =
+        | can_refine N (w,wo) ((_, MTACTIC (Method.Source tac, (using, not_using), _)) :: L) =
            (case tac_can_refine (tac @ [Token.eof])
               of SOME (w',wo') =>
-                    can_refine (N+1) (merge_facts [using, w', w], merge_facts [wo', wo]) L
+                    can_refine (N+1) (merge_facts [using, w', w], merge_facts [not_using, wo', wo]) L
                | NONE => NONE)
         | can_refine N (w,wo) ((_, MINSERT facts) :: L) =
             can_refine (N+1) (merge_facts [facts, w], wo) L
@@ -5042,7 +5020,7 @@ val move_lemma =
 val SIMP_LIKE = ["simp", "auto", "simp_all", "clarsimp"]
 
 val red_SIMP = linear_passm NONE (
-  fn origin as (s00, MTACTIC (Method.Source (tok :: toks), using, _)) :: L =>
+  fn origin as (s00, MTACTIC (Method.Source (tok :: toks), (using, not_using), _)) :: L =>
       if member (op =) SIMP_LIKE (Token.content_of tok)
       then \<^try>\<open>let
            val ((w,wo), _) =
@@ -5052,7 +5030,7 @@ val red_SIMP = linear_passm NONE (
            val s0 = the s00
            val s1 = case L of H1 :: _ => SOME (the (fst H1))
                             | _ => NONE
-           val mast = MSIMP (merge_facts [using, w], wo)
+           val mast = MSIMP (merge_facts [using, w], merge_facts [not_using, wo])
            val s1'= eval_singlem mast s0
            val chk = chk s0 origin
         in if is_some s1 andalso Minilang.equiv_proof_state (the s1, s1')

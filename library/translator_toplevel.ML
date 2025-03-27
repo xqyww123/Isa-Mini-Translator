@@ -33,34 +33,6 @@ fun is_goal_command (Command_Span.Command_Span (name, _)) =
   | is_goal_command _ = false
 fun is_goal_command' (Command_Span.Span (k, _)) = is_goal_command k
 
-val extract_proof =
-  let datatype ele = FWD | BWD
-      fun pop _ [] = raise MinLang_Translator.Unsupported "Malformed Source"
-        | pop k (k'::SK) = if k = k' then SK else raise MinLang_Translator.Unsupported "Malformed Source"
-      fun pass [] _ = []
-        | pass stack ((tr, sp as Command_Span.Span (Command_Span.Command_Span (name, _), _)) :: L)
-            = (case name
-                 of "proof" => (tr, sp) :: pass (FWD :: stack) L
-                  | "qed"   => (tr, sp) :: pass (stack |> pop FWD |> pop BWD) L
-                  | "have"  => (tr, sp) :: pass (BWD :: stack) L
-                  | "show"  => (tr, sp) :: pass (BWD :: stack) L
-                  | "hence" => (tr, sp) :: pass (BWD :: stack) L
-                  | "thus"  => (tr, sp) :: pass (BWD :: stack) L
-                  | "consider"  => (tr, sp) :: pass (BWD :: stack) L
-                  | "obtain"    => (tr, sp) :: pass (BWD :: stack) L
-                  | "interpret" => (tr, sp) :: pass (BWD :: stack) L
-                  | "subgoal"   => (tr, sp) :: pass (BWD :: stack) L
-                  | "by"    => (tr, sp) :: pass (pop BWD stack) L
-                  | "done"  => (tr, sp) :: pass (pop BWD stack) L
-                  | "apply_end" => (tr, sp) :: pass (pop BWD stack) L
-                  | "."     => (tr, sp) :: pass (pop BWD stack) L
-                  | ".."    => (tr, sp) :: pass (pop BWD stack) L
-                  |  _      => (tr, sp) :: pass stack L
-              )
-        | pass _ _ = raise Translation_Fail "Malformed Source"
-   in pass [BWD]
-  end
-
 fun is_theory (Command_Span.Command_Span (name, _)) = name = "theory"
   | is_theory _ = false
 fun is_theory' (Command_Span.Span (k, _)) = is_theory k
@@ -182,15 +154,20 @@ fun REPL_plugin reporter : REPL.collector = fn cfg => fn {current_command, state
       then let
           val ret = Unsynchronized.ref []
           val errs= Unsynchronized.ref []
-          val prf_spans = extract_proof remaining
+          val prf_spans = Minilang_Aux.extract_proof remaining
           val prf = map (fn (_, Command_Span.Span (_, src)) => filter Token.is_proper src) prf_spans
           val origin = String.concatWith "\n" (map (String.concat o Minilang_Aux.print_toks) prf)
           val _ = ret := ("origin", origin) :: !ret
-          val _ = \<^try>\<open>
-              let val thor = Thor.translate_thor state prf_spans
+       (* val _ = \<^try>\<open>
+              let val thor = Thor.translate_thor false state prf_spans
                in ret := ("isar-SH", thor) :: !ret
               end 
-              catch _ => ()\<close> (*
+              catch _ => ()\<close> *)
+          val _ = \<^try>\<open>
+              let val thor = Thor.translate_thor true state prf_spans
+               in ret := ("isar-SH*", thor) :: !ret
+              end 
+              catch X => ()\<close> (*
           val _ = \<^try>\<open>let
                   val asts = MinLang_Translator.translate_m (state, prf)
                   val strs = map (apsnd (MinLang_Translator.print_mast true)) asts
