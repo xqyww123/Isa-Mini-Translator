@@ -152,6 +152,8 @@ val print_mast : bool (*prints response*) -> mast' -> string
 val parse_isar : Toplevel.state * Token.src list -> ast'
 val collect_facts : ast' -> (Facts.ref * Token.src list) list (*using*)
                           * (Facts.ref * Token.src list) list (*not using*)
+val facts_in_SH_return : string -> (Facts.ref * Token.src list) list (*using*)
+                                 * (Facts.ref * Token.src list) list (*not using*)
 
 end
 
@@ -186,17 +188,6 @@ val tok_where = mk_idt "where"
 val tok_symmetric = mk_idt "symmetric"
 
 (* parse facts in tactic *)
-
-fun tok_eq (tok1,tok2) =
-  Token.kind_of tok1 = Token.kind_of tok2 andalso Token.content_of tok1 = Token.content_of tok2
-fun fact_eq ((r1,att1),(r2,att2)) =
-  r1 = r2 andalso eq_list (eq_list tok_eq) (att1, att2)
-
-fun foldl1' _ [] = []
-  | foldl1' F L = foldl1 F L
-
-val merge_facts = foldl1' (merge fact_eq)
-fun merge_facts2 facts = (merge_facts (map fst facts), merge_facts (map snd facts))
 
 local
 val thms = Scan.repeat Parse.thm

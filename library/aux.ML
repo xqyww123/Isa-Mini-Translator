@@ -26,6 +26,17 @@ val print_factref : Facts.ref -> string list
 val print_fact : Facts.ref * Token.T list list -> string list
 val print_facts : (Facts.ref * Token.T list list) list -> string list
 
+
+val tok_eq : Token.T * Token.T -> bool
+val fact_eq : (Facts.ref * Token.src list) * (Facts.ref * Token.src list) -> bool
+val foldl1' : ('a list * 'a list -> 'a list) -> 'a list list -> 'a list
+val merge_facts : (Facts.ref * Token.src list) list list -> (Facts.ref * Token.src list) list
+val merge_facts2 : ( (Facts.ref * Token.src list) list *
+                     (Facts.ref * Token.src list) list
+                   ) list
+                -> (  Facts.ref * Token.src list) list
+                   * (Facts.ref * Token.src list) list
+
 end
 
 structure Minilang_Aux : MINILANG_AUX = struct
@@ -169,6 +180,20 @@ fun print_factref (Facts.Named ((N,_),iv)) = quote_fact N :: print_iv iv
   | print_factref (Facts.Fact expr) = ["\<open>", trim_markup expr, "\<close>"]
 fun print_fact (rf,attrs) = print_factref rf @ print_attr attrs
 val print_facts = implode_with " " o map print_fact
+
+
+
+
+fun tok_eq (tok1,tok2) =
+  Token.kind_of tok1 = Token.kind_of tok2 andalso Token.content_of tok1 = Token.content_of tok2
+fun fact_eq ((r1,att1),(r2,att2)) =
+  r1 = r2 andalso eq_list (eq_list tok_eq) (att1, att2)
+
+fun foldl1' _ [] = []
+  | foldl1' F L = foldl1 F L
+
+val merge_facts = foldl1' (merge fact_eq)
+fun merge_facts2 facts = (merge_facts (map fst facts), merge_facts (map snd facts))
 
 
 

@@ -60,31 +60,28 @@ fun translate_thor improved stat commands =
                           in { add = w, del = wo, only = false }
                          end
                         else Sledgehammer_Fact.no_fact_override
-                     val sequent_opt' = try (snd o
+                     val sequent_opt' = try (
                                 Phi_Sledgehammer_Solver.all_auto improved override NONE ctxt) sequent
-                     val sh_str =
-                        if improved
-                        then let
-                             val add = (if null (#add override)
-                                        then []
-                                        else [" add: "])
-                                     @ print_facts (#add override)
-                             val del = (if null (#del override)
-                                        then []
-                                        else [" del: "])
-                                     @ print_facts (#del override)
-                             val code = String.concat (
-                                           "by (auto_sledgehammer"
-                                        :: add
-                                         @ del
-                                         @ [")"])
-                          in (Position.none, code)
-                         end
-                        else raw_SH_str
                   in case sequent_opt'
-                  of SOME sequent' => let
+                  of SOME (SH_prf, sequent') => let
                            val meth = Method.Basic (K (Method.METHOD (K (K (Seq.single sequent')))))
                            val tr' = Isar_Cmd.terminal_proof ((meth, Position.no_range), NONE) Toplevel.empty
+                           val (w,wo) = MinLang_Translator.facts_in_SH_return SH_prf
+                           val sh_str =
+                                if improved
+                                then let
+                                     val add = (if null w  then [] else [" add: "])
+                                             @ print_facts w
+                                     val del = (if null wo then [] else [" del: "])
+                                             @ print_facts (#del override)
+                                     val code = String.concat (
+                                                   "by (auto_sledgehammer"
+                                                :: add
+                                                 @ del
+                                                 @ [")"])
+                                  in (Position.none, code)
+                                 end
+                                else raw_SH_str
                         in case Toplevel.command_errors false tr' stat
                              of ([], SOME stat') =>
                                      sh_str :: translate stat' (remove_tactic all_commands)
