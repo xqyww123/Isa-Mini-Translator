@@ -149,6 +149,9 @@ val translate'm  : Toplevel.state -> string -> (string * mast') list
 val print_ast  :  ast' -> string
 val print_mast : bool (*prints response*) -> mast' -> string
 
+val parse_isar : Toplevel.state * Token.src list -> ast'
+val collect_facts : ast' -> (Facts.ref * Token.src list) list
+
 end
 
 structure MinLang_Translator : ML_TRANSLATOR = struct
@@ -597,13 +600,6 @@ type mast' = (Minilang.state option * mast) list
 
 (** Pre-Print **)
 
-fun implode_with' _ []  R = R
-  | implode_with' _ [x] R = x @ R
-  | implode_with' s (h::L) R = h @ s :: implode_with' s L R
-
-fun implode_with _ [] = []
-  | implode_with _ [x] = x
-  | implode_with s (h::L) = h @ s :: implode_with s L
 
 
 fun tokenize_iv' (Facts.FromTo (i,j)) = [mk_tok_nat i, tok_minus, mk_tok_nat j]
@@ -1167,6 +1163,14 @@ fun replace_fact_expr_with_name'core ctxt raw_expr =
        in case try (Syntax.read_prop (Proof_Context.set_mode Proof_Context.mode_pattern ctxt)) raw_expr
        of NONE => NONE
         | SOME pat => let
+          fun distinct [(_, _, fact)] = SOME fact
+            | distinct ((th1, len1, fact1) :: (th2, len2, fact2) :: L) =
+                if Thm.equiv_thm thy (th1, th2)
+                then if len1 <= len2
+                   then distinct ((th1, len1, fact1) :: L)
+                   else distinct ((th2, len2, fact2) :: L)
+                else NONE
+            | distinct _ = NONE
           val options = map_filter (fn (name, ths) =>
                     case get_index (fn th => if Pattern.matches thy (pat, Thm.prop_of th)
                                                     then SOME th
@@ -1176,13 +1180,12 @@ fun replace_fact_expr_with_name'core ctxt raw_expr =
                              val name' = simp_fact_name ctxt name
                              val iv = (case ths of [_] => NONE
                                                  | _ => SOME [Facts.Single (i+1)] )
-                          in SOME (th, Facts.Named ((name', Position.none), iv))
+                          in if name' = "this"
+                           then NONE
+                           else SOME (th, length ths, Facts.Named ((name', Position.none), iv))
                          end
                     ) local_facts
-                    |> distinct (Thm.equiv_thm thy o apply2 fst)
-       in case options
-       of [(_,x)] => SOME x
-        |  _  => NONE
+       in distinct options
       end
       end
 
@@ -2499,7 +2502,7 @@ datatype blk_behv = OPEN_BLK
 
 val initial_state = Thread_Data.var ()
 
-val initial_pass : Toplevel.state * Token.src list -> ast' =
+val parse_isar : Toplevel.state * Token.src list -> ast' =
   let fun chk_end (ret, []) = ret
         | chk_end (ret, [eof]) =
             if Token.is_eof eof then ret else raise Parse_Fail [[eof]]
@@ -5074,7 +5077,7 @@ fun translate (s, toks) =
                                       else error "Not a proof state"
    in Thread_Data.put counter_store NONE
     ; Thread_Data.put initial_state (SOME ps)
-    ; initial_pass (s, toks)
+    ; parse_isar (s, toks)
    (* |> validate ps "Validation Fail: Initial Pass" (*UNNECESSARY*) *)
    |> pad_vars_in_case                               (*requires and preserves states*)
    |> assign_factname                                (*requires and preserves states*)
@@ -5133,7 +5136,7 @@ fun translate_m (s, toks) =
               then raise Translation_Fail "Some proof obligation fails"
               else ( warning (print_mast true refined);
                      ret := ("refined", refined) :: !ret )
-      val ord_raw = \<^try>\<open> raw
+   (* val ord_raw = \<^try>\<open> raw
              |> move_lemma                           (*destroys state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
              |> report "reord_raw" 
@@ -5144,7 +5147,7 @@ fun translate_m (s, toks) =
              |> validatem ctxt0 (Minilang.INIT' ps)
              |> report "reord_refined"
              |> SOME
-           catch _ => NONE \<close>
+           catch _ => NONE \<close> *)
       val _ = warning (String.concatWith " " ("produce: " :: map (fst) (!ret)))
    in !ret
   end
