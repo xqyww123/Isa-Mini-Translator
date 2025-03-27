@@ -220,6 +220,11 @@ val simp_modifiers0 =
                 let fun ist (rf, atts) = (rf, atts @ [[tok_symmetric]])
                  in (map ist thms, thms)
                 end ))
+            || (Args.parens (Args.$$$ "no_asm") >> K (K ([], [])) )
+            || (Args.parens (Args.$$$ "no_asm_use") >> K (K ([], [])) )
+            || (Args.parens (Args.$$$ "no_asm_simp") >> K (K ([], [])) )
+            || (Args.parens (Args.$$$ "asm_lr") >> K (K ([], [])) )
+            
 
 fun simp_modifiers toks =
   let fun parse ret _ (toks as [_]) = (ret, toks)

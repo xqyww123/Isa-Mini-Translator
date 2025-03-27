@@ -167,7 +167,7 @@ fun REPL_plugin reporter : REPL.collector = fn cfg => fn {current_command, state
               let val thor = Thor.translate_thor true state prf_spans
                in ret := ("isar-SH*", thor) :: !ret
               end 
-              catch X => ()\<close> (*
+              catch X => errs := X :: !errs\<close> (*
           val _ = \<^try>\<open>let
                   val asts = MinLang_Translator.translate_m (state, prf)
                   val strs = map (apsnd (MinLang_Translator.print_mast true)) asts

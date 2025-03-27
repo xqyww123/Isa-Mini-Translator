@@ -202,7 +202,7 @@ mqed
 apply (simp_all add : binomial_eq_0)
 (*end 3 subgoals*) 
 .    
-mqed      
+mqed       
 .                
                          
 ML \<open>ML_Translator_Top.init_translator (Path.explode "/tmp/xxx")

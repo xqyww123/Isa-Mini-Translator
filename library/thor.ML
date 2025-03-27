@@ -1,6 +1,7 @@
 signature THOR = sig
 
 val translate_thor : bool -> Toplevel.state -> (Toplevel.transition * Command_Span.span) list -> string
+val translate_thor_src : bool -> Toplevel.state -> string -> string
 
 end
 
@@ -37,10 +38,52 @@ fun concat_strs pstrs =
 
 val raw_SH_str = mkstr raw_sledgehammer_span
 
+fun print_goal0 stat =
+  let val ctxt = Toplevel.context_of stat
+      val proof = Toplevel.proof_of stat
+      val {goal, facts, ...} = Proof.goal proof
+      val goals =
+            if can Proof.assert_backward proof
+            then goal
+               |> Thm.prems_of
+               |> map ( Syntax.string_of_term ctxt
+                     #> trim_markup
+                     #> quote
+                     #> single )
+            else []
+      val facts = facts
+               |> map ( Thm.string_of_thm ctxt
+                     #> trim_markup
+                     #> quote
+                     #> single )
+   in ( if null facts
+        then []
+        else ["(*using " :: implode_with " and " facts @ ["*)"] ] )
+    @ ( if null goals
+        then []
+        else ["(*goals: " :: implode_with " and " goals @ ["*)"]] )
+  end
+
+fun print_goal (Command_Span.Span (Command_Span.Command_Span (name, _), _)) stat =
+      if member (op =) ["apply", "prefer", "defer", "subgoal", "supply", "using", "with", "from",
+                        "then"] name
+      then case implode_with "\n" (print_goal0 stat)
+             of [] => []
+              | L => [(Position.none, String.concat L)]
+      else []
+  | print_goal _ _ = []
+
 fun translate_thor improved stat commands =
   let fun translate _ [] = []
         | translate stat (all_commands as (tr, span) :: commands) =
             let val aa = concat_strs (map (mkstr o snd) all_commands)
+                fun fallback () =
+                     case Toplevel.command_errors false tr stat
+                       of ([], SOME stat') =>
+                               mkstr span
+                            :: print_goal span stat'
+                             @ translate stat' commands
+                        | X => error "BUG translate_thor - Isar evaluation fails"
              in
             if unsuported span
             then raise Unsupported "oops or sorry"
@@ -84,26 +127,34 @@ fun translate_thor improved stat commands =
                                 else raw_SH_str
                         in case Toplevel.command_errors false tr' stat
                              of ([], SOME stat') =>
-                                     sh_str :: translate stat' (remove_tactic all_commands)
-                              | _ => (
-                           case Toplevel.command_errors false tr stat
-                             of ([], SOME stat') =>
-                                     mkstr span :: translate stat' commands
-                              | X => error "BUG translate_thor - Isar evaluation fails")
+                                     sh_str
+                                  :: translate stat' (remove_tactic all_commands)
+                              | _ => fallback ()
                        end
-                   | NONE => (
-                           case Toplevel.command_errors false tr stat
-                             of ([], SOME stat') =>
-                                     mkstr span :: translate stat' commands
-                              | X => error "BUG translate_thor - Isar evaluation fails")
+                   | NONE => fallback ()
                  end
-            else (case Toplevel.command_errors false tr stat
-              of ([], SOME stat') =>
-                  mkstr span :: translate stat' commands
-               | X => error "BUG translate_thor - Isar evaluation fails")
+            else fallback ()
             end
       val ret = translate stat commands
    in concat_strs ret
   end
+
+fun parse state src =
+  let val thy = Toplevel.theory_of state
+      val kws = Thy_Header.get_keywords thy
+      val pos = Position.make {
+                  line=1, offset=1, end_offset=1, props={label="", file="#TRANSLATOR", id="0"}}
+      val toks = Symbol_Pos.explode (src, pos)
+              |> Token.tokenize kws {strict = false}
+              |> Outer_Syntax.parse_spans
+              |> map (` (Outer_Syntax.parse_span thy (K thy) o Command_Span.content))
+   in (state, toks)
+  end
+
+fun translate_thor_src improved state src =
+  let val (state, cmds) = parse state src
+   in translate_thor improved state cmds
+  end
+
 
 end
