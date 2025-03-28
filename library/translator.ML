@@ -328,20 +328,11 @@ fun tac_can_refine [] = NONE
          | "this"     => SOME ([], [])
          | _ => NONE )
 
-fun facts_in_tac [] = ([] (*to use*), [] (*to not use*))
-  | facts_in_tac (tok :: toks) =
-    ( case Token.content_of tok
-        of "auto"   => auto  toks |> fst
-         | "metis"  => metis toks |> fst |> rpair []
-         | "meson"  => meson toks |> fst |> rpair []
-         | "smt"    => smt   toks |> fst |> rpair []
-         | "simp"   => simp  toks |> fst
-         | "fastforce" => simp  toks |> fst
-         | "insert" => thms  toks |> fst |> rpair []
-         | "blast"  => simp  toks |> fst
-         | "fast"   => simp  toks |> fst
-         | "(" => facts_in_tac toks
-         | _ => ([],[]) )
+fun facts_in_tac toks =
+      case tac_can_refine toks
+        of SOME ret => ret
+         | NONE => ([],[])
+      
 (*
 and facts_in_facts facts
       = merge_facts (facts :: map (merge_facts o map facts_in_attr' o snd) facts)
@@ -366,6 +357,7 @@ end
 val keywords = Keyword.no_major_keywords (Thy_Header.get_keywords \<^theory>)
 fun facts_in_SH_return src =
   if src = "" then ([], [])
+  else if src = "()" then ([], [])
   else let
       val ((m, _), _) =
           Input.string src

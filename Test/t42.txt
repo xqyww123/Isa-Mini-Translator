@@ -1,0 +1,42 @@
+proof(rule below_antisym)
+  show "ValF\<cdot>fixD \<sqsubseteq> \<lbrakk>Ycomb\<rbrakk>\<rho>"
+    unfolding fixD_def Ycomb_def
+    apply (clarsimp simp: cfun_below_iff eta_cfun)
+    apply (case_tac x)
+     apply simp_all
+    apply (rule fix_least)
+    by (subst Y_delta_def, simp)
+next
+  { fix f \<rho>
+    let ?P = "\<lambda>x. x \<sqsubseteq> ID \<and> appF\<cdot>(x\<cdot>(appF\<cdot>(\<lbrakk>Y_delta\<rbrakk>\<rho>)\<cdot>(ValF\<cdot>f)))\<cdot>(appF\<cdot>(\<lbrakk>Y_delta\<rbrakk>\<rho>)\<cdot>(ValF\<cdot>f)) \<sqsubseteq> fixD\<cdot>(ValF\<cdot>f)"
+    have "?P ValD_copy"
+      apply (rule fix_ind)
+        apply simp
+       apply simp
+      apply clarsimp
+      apply (rule conjI)
+       apply (rule cfun_belowI)
+       apply (case_tac xa)
+        apply simp_all
+       apply (drule cfun_map_below_ID)
+       apply (simp add: cfun_below_iff)
+      apply (simp add: fixD_def eta_cfun)
+      apply (subst Y_delta_def)
+      apply (subst fix_eq)
+      apply simp
+      apply (rule cfun_below_ID, assumption)
+      apply (rule monofun_cfun_arg)
+      apply (subgoal_tac "appF\<cdot>(x\<cdot>(appF\<cdot>(\<lbrakk>Y_delta\<rbrakk>\<rho>)\<cdot>(ValF\<cdot>f)))\<cdot>(x\<cdot>(appF\<cdot>(\<lbrakk>Y_delta\<rbrakk>\<rho>)\<cdot>(ValF\<cdot>f)))
+                        \<sqsubseteq> appF\<cdot>(x\<cdot>(appF\<cdot>(\<lbrakk>Y_delta\<rbrakk>\<rho>)\<cdot>(ValF\<cdot>f)))\<cdot>(appF\<cdot>(\<lbrakk>Y_delta\<rbrakk>\<rho>)\<cdot>(ValF\<cdot>f))")
+       apply (erule (1) below_trans)
+      apply (simp add: monofun_cfun_arg cfun_below_iff)
+      done }
+  then show "\<lbrakk>Ycomb\<rbrakk>\<rho> \<sqsubseteq> ValF\<cdot>fixD"
+    unfolding Ycomb_def fixD_def
+    apply (clarsimp simp: cfun_below_iff)
+    apply (case_tac x)
+    apply (subst Y_delta_def, simp)
+    apply simp
+    apply (subst Y_delta_def, simp)+
+    done
+qed

@@ -109,17 +109,17 @@ fun translate_thor improved stat commands =
         | translate stat (all_commands as (tr, span) :: commands) =
             let val aa = concat_strs (map (mkstr o snd) all_commands)
                 fun fallback () =
-                     case Toplevel.command_errors false tr stat
+                     case Toplevel.command_errors true tr stat
                        of ([], SOME stat') =>
                                mkstr span
                             :: print_goal span stat'
                              @ print_case_newthings span stat'
                              @ translate stat' commands
                         | X => error "BUG translate_thor - Isar evaluation fails"
-             in
+             in (*
             if unsuported span
             then raise Unsupported "oops or sorry"
-            else if Toplevel.is_proof stat andalso
+            else *) if Toplevel.is_proof stat andalso
                     is_tactic all_commands
             then let val ctxt = Toplevel.context_of stat
                      val sequent = #goal (Proof.goal (Toplevel.proof_of stat))
