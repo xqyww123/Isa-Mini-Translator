@@ -22,12 +22,12 @@ val raw_sledgehammer = [fst (Token.make ((0,0),"by") Position.none),
 val [raw_sledgehammer_span] = Outer_Syntax.parse_spans raw_sledgehammer
 
 fun mkstr (Command_Span.Span (Command_Span.Command_Span (_, pos), toks)) =
-      (pos, String.concat (print_toks toks))
-  | mkstr _ = (Position.none, "")
+      (SOME pos, String.concat (print_toks toks))
+  | mkstr _ = (NONE, "")
 fun concat_strs pstrs =
   let fun cat ((p1, s1) :: (p2, s2) :: L) =
-            let val l1 = Position.line_of p1
-                val l2 = Position.line_of p1
+            let val l1 = Option.mapPartial Position.line_of p1
+                val l2 = Option.mapPartial Position.line_of p2
              in if is_some l1 andalso is_some l2 andalso the l1 = the l2
                 then s1 :: " " :: cat ((p2, s2) :: L)
                 else s1 :: "\n" :: cat ((p2, s2) :: L)
@@ -36,21 +36,18 @@ fun concat_strs pstrs =
    in String.concat (cat pstrs)
   end
 
-val raw_SH_str = mkstr raw_sledgehammer_span
+val raw_SH_str = mkstr raw_sledgehammer_span |> apfst (K NONE)
 
 fun print_goal0 stat =
   let val ctxt = Toplevel.context_of stat
       val proof = Toplevel.proof_of stat
       val {goal, facts, ...} = Proof.goal proof
-      val goals =
-            if can Proof.assert_backward proof
-            then goal
+      val goals = goal
                |> Thm.prems_of
                |> map ( Syntax.string_of_term ctxt
                      #> trim_markup
                      #> quote
                      #> single )
-            else []
       val facts = facts
                |> map ( Thm.string_of_thm ctxt
                      #> trim_markup
@@ -58,20 +55,54 @@ fun print_goal0 stat =
                      #> single )
    in ( if null facts
         then []
-        else ["(*using " :: implode_with " and " facts @ ["*)"] ] )
+        else ["(*using " :: implode_with " and " facts @ [" *)"] ] )
     @ ( if null goals
         then []
-        else ["(*goals: " :: implode_with " and " goals @ ["*)"]] )
+        else ["(*goals: " :: implode_with " and " goals @ [" *)"]] )
   end
 
 fun print_goal (Command_Span.Span (Command_Span.Command_Span (name, _), _)) stat =
       if member (op =) ["apply", "prefer", "defer", "subgoal", "supply", "using", "with", "from",
-                        "then"] name
+                        "then", "consider", "obtain", "proof"] name
       then case implode_with "\n" (print_goal0 stat)
              of [] => []
-              | L => [(Position.none, String.concat L)]
+              | L => [(NONE, String.concat L)]
       else []
   | print_goal _ _ = []
+
+fun pretty_tm ctxt tm = single (quote_space (trim_markup (Syntax.string_of_term ctxt tm)))
+
+fun print_case_newthings (Command_Span.Span (Command_Span.Command_Span (name, _), toks)) stat =
+      if name = "case"
+      then let
+           val ctxt = Toplevel.context_of stat
+           val proof = Toplevel.proof_of stat
+           val ((_,MinLang_Translator.CASE (_, (name, vs))), _) =
+                MinLang_Translator.case_parser proof (tl (filter Token.is_proper toks) @ [Token.eof])
+           val kase as Rule_Cases.Case {fixes,...} =
+                Proof_Context.check_case ctxt true (name, Position.none)
+                                              (map (Option.map Binding.name) vs)
+           val (facts, ctxt') = Proof_Context.apply_case kase ctxt
+           val ret = ( if null fixes
+                       then []
+                       else "(*fixes variables "
+                          :: implode_with' " and " (
+                                map (fn (name,typ) =>
+                                  [Binding.name_of name, " :: ", quote_space (pretty_ty ctxt typ)] ) fixes)
+                             [" *)"] )
+                   @ ( if null facts
+                       then []
+                       else "(*introduces facts "
+                         :: implode_with' " and " (
+                                map (fn (v,T) =>
+                                  v :: ": " :: implode_with " " (map (pretty_tm ctxt) T)) facts)
+                            [" *)"] )
+        in case ret
+        of [] => []
+         | L => [(NONE, String.concat L)]
+       end
+      else []
+  | print_case_newthings _ _ = []
 
 fun translate_thor improved stat commands =
   let fun translate _ [] = []
@@ -82,6 +113,7 @@ fun translate_thor improved stat commands =
                        of ([], SOME stat') =>
                                mkstr span
                             :: print_goal span stat'
+                             @ print_case_newthings span stat'
                              @ translate stat' commands
                         | X => error "BUG translate_thor - Isar evaluation fails"
              in
@@ -98,7 +130,8 @@ fun translate_thor improved stat commands =
                              val origin_prf = extract_proof all_commands
                                            |> map ( filter Token.is_proper
                                                   o Command_Span.content o snd)
-                             val origin_ast = MinLang_Translator.parse_isar (stat, origin_prf)
+                             val origin_ast = try MinLang_Translator.parse_isar (stat, origin_prf)
+                                           |> the_default []
                              val (w,wo) = MinLang_Translator.collect_facts origin_ast
                           in { add = w, del = wo, only = false }
                          end
@@ -122,7 +155,7 @@ fun translate_thor improved stat commands =
                                                 :: add
                                                  @ del
                                                  @ [")"])
-                                  in (Position.none, code)
+                                  in (NONE, code)
                                  end
                                 else raw_SH_str
                         in case Toplevel.command_errors false tr' stat
@@ -147,6 +180,8 @@ fun parse state src =
       val toks = Symbol_Pos.explode (src, pos)
               |> Token.tokenize kws {strict = false}
               |> Outer_Syntax.parse_spans
+              |> filter (fn Command_Span.Span (Command_Span.Ignored_Span, _) => false
+                          | _ => true)
               |> map (` (Outer_Syntax.parse_span thy (K thy) o Command_Span.content))
    in (state, toks)
   end

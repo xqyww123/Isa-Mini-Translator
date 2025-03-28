@@ -113,7 +113,8 @@ show "?case"
  apply ((clarsimp simp del : power_Suc)[1])
 mproof
 fix z :: 'a
-assume z1: "M \<le> norm z" and fact2: "1 + norm (c (Suc n)) / e \<le> norm z"
+  assume z1: "M \<le> norm z" and fact2: "1 + norm (c (Suc n)) / e \<le> norm z"
+  ML_val \<open>Proof.the_facts (Toplevel.proof_of @{Isar.state})\<close>
 have z2: "e + norm (c (Suc n)) \<le> e * norm z"
 using z1 fact2 assms apply ((simp add : field_simps)[1])
 .
@@ -162,7 +163,7 @@ ML_val \<open>val _ = MinLang_Translator.translate' @{Isar.state}
 
 thm order.antisym
 
-mproof
+mproof 
 have "fact0":"k \<le> n div 2 \<longleftrightarrow> 2*k \<le> n"
 apply ((linarith)[1])
 .
@@ -196,19 +197,19 @@ apply ((simp)[1])
 (*NEXT*)    
 apply ((simp)[1])
 (*end 3 subgoals*)  
-.   
+.  
 mqed       
 (*NEXT*) 
 apply (simp_all add : binomial_eq_0)
 (*end 3 subgoals*) 
 .    
 mqed       
-.                
-                         
+.                  
+                           
 ML \<open>ML_Translator_Top.init_translator (Path.explode "/tmp/xxx")
                                       (ML_Translator_Top.interactive_reporter ())\<close>
- 
-
+  
+  
 
 ML \<open>ML_Translator_Top.translate_file "/home/xero/repo/Isabelle2024/src/HOL/Library/Sublist.thy"\<close>
 

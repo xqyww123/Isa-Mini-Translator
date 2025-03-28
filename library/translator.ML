@@ -155,6 +155,8 @@ val collect_facts : ast' -> (Facts.ref * Token.src list) list (*using*)
 val facts_in_SH_return : string -> (Facts.ref * Token.src list) list (*using*)
                                  * (Facts.ref * Token.src list) list (*not using*)
 
+val case_parser : Proof.state -> (Proof.state * ast) parser
+
 end
 
 structure MinLang_Translator : ML_TRANSLATOR = struct
@@ -1502,13 +1504,7 @@ fun print_prop ctxt tm =
   end
   end
 
-val quote_space = Phi_Help.quote_space
-val quote_fact  = Phi_Help.quote_fact
 
-
-
-
-fun print_term tm = [quote_space (trim_markup tm)]
 fun print_statement (tm, [])   = print_term tm
   | print_statement (tm, pats) = print_term tm @ maps (fn pat => [" (", pat, ")"]) pats
 val print_statements = implode_with " " o map print_statement
@@ -1824,6 +1820,7 @@ end
 
 in
 
+val case_parser = case_parser
 val restore_case = restore_case
 
 val initial_parsers = Symtab.make [
@@ -2284,7 +2281,7 @@ fun print_mast print_response =
             val vs' = if null vs then []
                       else indent_of i :: "(*fixes variables "
                         :: implode_with' " and " (
-                              map (fn (v,T) => [v, " :: ", quote_space (print_ty ctxt T)]) vs) [" *)"]
+                              map (fn (v,T) => [v, " :: ", quote_space (pretty_ty ctxt T)]) vs) [" *)"]
             val string_of = single o quote_space o trim_markup o Syntax.string_of_term ctxt
             val hs' = if null hs then []
                       else indent_of i :: "(*introduces facts "

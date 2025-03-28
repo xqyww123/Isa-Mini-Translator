@@ -7,7 +7,7 @@
 section \<open>List prefixes, suffixes, and homeomorphic embedding\<close>
 
 theory MS_Test_Sublist
-imports Main MS_Translator
+imports Main Minilang_Translator.MS_Translator
 begin 
 
 subsection \<open>Prefix order on lists\<close>
@@ -182,15 +182,16 @@ lemma strict_prefix_simps [simp, code]:
   "strict_prefix [] (x # xs) \<longleftrightarrow> True"
   "strict_prefix (x # xs) (y # ys) \<longleftrightarrow> x = y \<and> strict_prefix xs ys"
   by (simp_all add: strict_prefix_def cong: conj_cong)
-
+     
 lemma take_strict_prefix: "strict_prefix xs ys \<Longrightarrow> strict_prefix (take n xs) ys"
-proof (induct n arbitrary: xs ys)
-  case 0
-  then show ?case by (cases ys) simp_all
-next
-  case (Suc n)
-  then show ?case by (metis prefix_order.less_trans strict_prefixI take_is_prefix)
-qed
+  ML_val \<open> Thor.translate_thor_src true @{Isar.state}
+ "proof (induct n arbitrary: xs ys)\n\
+  \case 0\n\
+  \then show ?case by (cases ys) simp_all\n\
+\next\n\
+  \case (Suc n)\n\
+  \then show ?case by (metis prefix_order.less_trans strict_prefixI take_is_prefix)\n\
+\qed"\<close>
 
 lemma prefix_takeWhile:
   assumes "prefix xs ys"

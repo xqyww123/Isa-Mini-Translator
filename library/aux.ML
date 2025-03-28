@@ -11,6 +11,9 @@ exception Translation_Fail of string
 exception Unsupported of string
 
 
+val quote_space : string -> string
+val quote_fact  : string -> string
+
 val print_mixfix : mixfix -> string list
 val print_var : binding * string option * mixfix -> bstring list
 val print_vars : (binding * string option * mixfix) list -> string list
@@ -25,6 +28,9 @@ val print_iv : Facts.interval list option -> string list
 val print_factref : Facts.ref -> string list
 val print_fact : Facts.ref * Token.T list list -> string list
 val print_facts : (Facts.ref * Token.T list list) list -> string list
+val print_term : string -> string list
+val pretty_ty : Proof.context -> typ -> string
+
 
 
 val tok_eq : Token.T * Token.T -> bool
@@ -180,6 +186,10 @@ fun print_factref (Facts.Named ((N,_),iv)) = quote_fact N :: print_iv iv
   | print_factref (Facts.Fact expr) = ["\<open>", trim_markup expr, "\<close>"]
 fun print_fact (rf,attrs) = print_factref rf @ print_attr attrs
 val print_facts = implode_with " " o map print_fact
+
+fun print_term tm = [quote_space (trim_markup tm)]
+fun pretty_ty ctxt T = trim_markup (Syntax.string_of_typ ctxt T)
+
 
 
 
