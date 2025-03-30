@@ -152,6 +152,14 @@ fun REPL_plugin reporter : REPL.collector = fn cfg => fn {current_command, state
          end
     then if #start reporter pos
       then let
+          val target_str = getenv "ML_Translation"
+          val _ = if target_str = ""
+                  then error "No translation target is indicated. \
+                             \Please suggest by setting environement variable 'ML_Translation'"
+                  else ()
+          val targets = String.tokens (fn c => c = #" ") target_str
+          val _ = find_first (not o member (op =) ["origin", "isar-SH", "isar-SH*", "refined"]) targets
+
           val ret = Unsynchronized.ref []
           val errs= Unsynchronized.ref []
           val prf_spans = Minilang_Aux.extract_proof remaining
