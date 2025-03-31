@@ -143,7 +143,7 @@ val translate  : Toplevel.state * Token.src list -> ast'
 val translate' : Toplevel.state -> string -> ast'
 
 type version = string (*can be `refined`, `raw` that is not refined*)
-val translate_m  : Toplevel.state * Token.src list -> (string * mast') list
+val translate_m  : string list -> Toplevel.state * Token.src list -> (string * mast') list
 val translate'm  : Toplevel.state -> string -> (string * mast') list
 
 val print_ast  :  ast' -> string
@@ -5072,8 +5072,9 @@ fun translate (s, toks) =
    |> (fn X => (warning (print_ast X); X))
   end
 
-fun translate_m (s, toks) =
-  let val ps = if Toplevel.is_proof s then Toplevel.proof_of s
+fun translate_m targets (s, toks) =
+  let val gen_target = member (op =) targets
+      val ps = if Toplevel.is_proof s then Toplevel.proof_of s
                                       else error "Not a proof state"
       val ps = ps
             |> Proof.map_context ( Config.put Printer.show_markup false
@@ -5089,7 +5090,7 @@ fun translate_m (s, toks) =
       val raw = trans_to_minlang (translate (s, toks)) s0 |> fst
              |> norm_Mtac                            (*destroys state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
-             |> report "raw"
+             |> gen_target "raw" ? report "raw"
       val refined = raw
              |> refinement                           (*preserves state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
@@ -5097,20 +5098,26 @@ fun translate_m (s, toks) =
              |> validatem ctxt0 (Minilang.INIT' ps)
       val _ = if mast_cheat' refined
               then raise Translation_Fail "Some proof obligation fails"
-              else ( warning (print_mast true refined);
-                     ret := ("refined", refined) :: !ret )
-   (* val ord_raw = \<^try>\<open> raw
-             |> move_lemma                           (*destroys state*)
-             |> validatem ctxt0 (Minilang.INIT' ps)
-             |> report "reord_raw" 
-             |> SOME
-           catch _ => NONE\<close>
-      val ord_refined = \<^try>\<open> refined
-             |> move_lemma
-             |> validatem ctxt0 (Minilang.INIT' ps)
-             |> report "reord_refined"
-             |> SOME
-           catch _ => NONE \<close> *)
+              else ( (* warning (print_mast true refined); *)
+                     if gen_target "refined"
+                     then ret := ("refined", refined) :: !ret
+                     else () )
+      val _ = if gen_target "reord_raw"
+              then \<^try>\<open> raw
+                     |> move_lemma                           (*destroys state*)
+                     |> validatem ctxt0 (Minilang.INIT' ps)
+                     |> report "reord_raw" 
+                     |> SOME
+                   catch _ => NONE\<close>
+              else NONE
+      val _ = if gen_target "reord_refined"
+              then \<^try>\<open> refined
+                     |> move_lemma
+                     |> validatem ctxt0 (Minilang.INIT' ps)
+                     |> report "reord_refined"
+                     |> SOME
+                   catch _ => NONE \<close>
+              else NONE
       val _ = warning (String.concatWith " " ("produce: " :: map (fst) (!ret)))
    in !ret
   end
@@ -5131,7 +5138,7 @@ fun parse state src =
   end
 
 fun translate'  state src = translate   (parse state src)
-fun translate'm state src = translate_m (parse state src)
+fun translate'm state src = translate_m ["refined", "raw"] (parse state src)
 
 end
 

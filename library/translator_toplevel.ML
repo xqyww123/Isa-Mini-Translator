@@ -13,7 +13,7 @@ val interactive_reporter : unit -> reporter
 (*val socket_reporter : BinIO.StreamIO.instream * BinIO.StreamIO.outstream
                    -> reporter*)
 
-val init_translator : Path.T -> reporter -> unit
+val init_translator : string list (*targets*) -> Path.T -> reporter -> unit
 val translate_src   : REPL.cfg -> string -> unit
 val translate_file  : string (*path*) -> unit
 
@@ -105,7 +105,7 @@ fun end_counter () =
                  ; rf
                end
 
-fun REPL_plugin reporter : REPL.collector = fn cfg => fn {current_command, state, remaining} =>
+fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_command, state, remaining} =>
   let val cnt = end_counter ()
       val Command_Span.Span (_, toks) = current_command
       val pos = case current_command of Command_Span.Span (Command_Span.Command_Span (_, pos), _) => pos
@@ -152,36 +152,43 @@ fun REPL_plugin reporter : REPL.collector = fn cfg => fn {current_command, state
          end
     then if #start reporter pos
       then let
-          val target_str = getenv "ML_Translation"
-          val _ = if target_str = ""
-                  then error "No translation target is indicated. \
-                             \Please suggest by setting environement variable 'ML_Translation'"
-                  else ()
-          val targets = String.tokens (fn c => c = #" ") target_str
-          val _ = find_first (not o member (op =) ["origin", "isar-SH", "isar-SH*", "refined"]) targets
-
           val ret = Unsynchronized.ref []
           val errs= Unsynchronized.ref []
           val prf_spans = Minilang_Aux.extract_proof remaining
           val prf = map (fn (_, Command_Span.Span (_, src)) => filter Token.is_proper src) prf_spans
+          
           val origin = String.concatWith "\n" (map (String.concat o Minilang_Aux.print_toks) prf)
+          val spec   = String.concat (Minilang_Aux.print_toks toks)
           val _ = ret := ("origin", origin) :: !ret
-       (* val _ = \<^try>\<open>
-              let val thor = Thor.translate_thor false state prf_spans
-               in ret := ("isar-SH", thor) :: !ret
-              end 
-              catch _ => ()\<close> *)
-          val _ = \<^try>\<open>
-              let val thor = Thor.translate_thor true state prf_spans
-               in ret := ("isar-SH*", thor) :: !ret
-              end 
-              catch X => errs := X :: !errs\<close> (*
-          val _ = \<^try>\<open>let
-                  val asts = MinLang_Translator.translate_m (state, prf)
+          val _ =
+              if member (op =) targets "goal"
+              then ret := ("goal", spec) :: !ret
+              else ()
+          val _ =
+              if member (op =) targets "isar-SH"
+              then \<^try>\<open>
+                let val thor = Thor.translate_thor false state prf_spans
+                 in ret := ("isar-SH", thor) :: !ret
+                end 
+                catch _ => ()\<close>
+              else ()
+          val _ =
+              if member (op =) targets "isar-SH*"
+              then \<^try>\<open>
+                let val thor = Thor.translate_thor true state prf_spans
+                 in ret := ("isar-SH*", thor) :: !ret
+                end 
+                catch X => errs := X :: !errs\<close>
+              else ()
+          val _ =
+              if exists (member (op =) targets) ["refined", "raw", "reord_raw", "reord_refined"]
+              then \<^try>\<open>let
+                  val asts = MinLang_Translator.translate_m targets (state, prf)
                   val strs = map (apsnd (MinLang_Translator.print_mast true)) asts
                   val _ = REPL.origin_warning [origin]
                in ret := strs @ !ret
-              end catch E => errs := E :: !errs \<close> *)
+              end catch E => errs := E :: !errs \<close>
+              else ()
        in #report reporter (pos, next_pos, !ret, !errs)
         ; (NONE, NONE)
       end
@@ -193,10 +200,10 @@ fun REPL_plugin reporter : REPL.collector = fn cfg => fn {current_command, state
 
 end
 
-fun init_translator base_dir_of_theories reporter = (
+fun init_translator targets base_dir_of_theories reporter = (
       REPL.init_repler base_dir_of_theories NONE
     ; REPL.set_register_thy false
-    ; REPL.register_plugin ("MinLang.Translator", REPL_plugin reporter)
+    ; REPL.register_plugin ("MinLang.Translator", REPL_plugin targets reporter)
     ; REPL.add_evaluated_theories ("Minilang.Minilang_Base", \<^theory>\<open>Minilang_Base\<close>) )
 
 fun translate_src cfg src = (REPL.RE cfg src; ())
@@ -254,9 +261,17 @@ fun socket_reporter (cin,cout) =
 
 fun REPL_App (cin, cout) =
   let open MessagePackBinIO.Unpack MessagePackBinIO.Pack
-      val (path, cin') = doUnpack unpackString (!cin)
+      val ((path, targets), cin') = doUnpack (unpackPair (unpackString, unpackList unpackString)) (!cin)
       val _ = cin := cin'
-   in REPL.register_plugin ("MinLang.Translator", REPL_plugin (socket_reporter (cin,cout)))
+
+      val KNOWN_TARGETS = ["origin", "isar-SH", "isar-SH*", "refined", "raw", "reord_raw",
+                           "reord_refined", "goal"]
+      val _ = case find_first (not o member (op =) KNOWN_TARGETS) targets
+                of SOME bad => error ("Unknown translation target: " ^ bad ^
+                                "\nAcceptable targets: " ^ String.concatWith ", " KNOWN_TARGETS)
+                 | NONE => ()
+
+   in REPL.register_plugin ("MinLang.Translator", REPL_plugin targets (socket_reporter (cin,cout)))
     ; translate_file path
     ; doPack packInt 3 cout
     ; BinIO.StreamIO.flushOut cout
