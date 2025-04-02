@@ -5099,7 +5099,7 @@ fun translate_m targets (s, toks) =
              |> validatem ctxt0 (Minilang.INIT' ps)
       val _ = if mast_cheat' refined
               then raise Translation_Fail "Some proof obligation fails"
-              else ( (* warning (print_mast true refined); *)
+              else ( warning (print_mast true refined);
                      if gen_target "refined"
                      then ret := ("refined", (refined, [])) :: !ret
                      else () )

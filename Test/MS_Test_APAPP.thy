@@ -5,7 +5,7 @@
 section \<open>Anonymous Party Approval Rules\<close>
 theory MS_Test_APAPP
   imports Complex_Main "Randomised_Social_Choice.Order_Predicates"
-          PAPP_Impossibility.PAPP_Multiset_Extras MS_Translator
+          PAPP_Impossibility.PAPP_Multiset_Extras Minilang_Translator.MS_Translator
 begin
 
 text \<open>

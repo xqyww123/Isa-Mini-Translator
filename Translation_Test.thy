@@ -1,6 +1,6 @@
 theory Translation_Test
   imports Main "HOL-Library.Log_Nat" "HOL-Library.Lattice_Algebras"
-          "../MS_Translator_Top" HOL.Transcendental HOL.Groups_Big
+          MS_Translator_Top HOL.Transcendental HOL.Groups_Big
 begin
 
 

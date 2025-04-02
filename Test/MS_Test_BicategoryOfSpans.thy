@@ -9,7 +9,7 @@ theory MS_Test_BicategoryOfSpans
 imports Category3.ConcreteCategory Bicategory.IsomorphismClass
         Bicategory.CanonicalIsos Bicategory.EquivalenceOfBicategories
         Bicategory.SpanBicategory Bicategory.Tabulation
-        Proof_Shell
+        Minilang_Translator.MS_Translator
 begin
 
 text \<open>

@@ -8,7 +8,7 @@
 section \<open>The discrete Akra-Bazzi theorem\<close>
 theory MS_Test_Akra_Bazzi
 imports
-  Complex_Main MS_Translator
+  Complex_Main Minilang_Translator.MS_Translator
   "HOL-Library.Landau_Symbols"
   Akra_Bazzi.Akra_Bazzi_Real
 begin
@@ -97,7 +97,8 @@ lemma e_hs_aux:
   (\<forall>t\<in>set ts. \<forall>x\<ge>x\<^sub>1. x\<^sub>0 \<le> t x \<and> t x < x) \<and>
   (\<forall>i<k. \<forall>x\<ge>x\<^sub>1. (bs!i)*x + (hs!i) x = real ((ts!i) x))"
 ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
-(File.read (Path.explode "./Translator/t8.txt"))\<close>
+(File.read (Path.explode "./t8.txt"))\<close>
+  sorry
 
 lemma
   e_pos: "e > 0" and length_hs: "length hs = k" and

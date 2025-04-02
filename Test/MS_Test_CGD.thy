@@ -4,7 +4,7 @@ theory MS_Test_CGD
 imports
   Coupledsim_Contrasim.Coupled_Simulation
   Coupledsim_Contrasim.Simple_Game
-  MS_Translator
+  Minilang_Translator.MS_Translator
 begin
 
 subsection \<open>The Coupled Simulation Preorder Game Using Delay Steps\<close>
@@ -81,7 +81,7 @@ lemma defender_only_challenged_by_visible_actions:
   by fastforce
 
 
-
+ 
 lemma True
 using exI apply (unfold True_def)
 
@@ -108,8 +108,8 @@ lemma strategy_from_coupleddsim_retains_coupledsim:
     \<open>length play > 1 \<Longrightarrow> hd (tl play) = AttackerNode p q \<Longrightarrow> R p q\<close>
 
              
-ML_val \<open>val _ =  MinLang_Translator.translate'  @{Isar.state}
-(File.read (Path.explode "./Translator/t15.txt"))\<close>
+ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
+(File.read (Path.explode "./t15.txt"))\<close>
 
 
 (*2 subgoals*)
@@ -274,7 +274,7 @@ lemma strategy_from_coupleddsim_sound:
     \<open>sound_0strategy (strategy_from_coupleddsim R) initial\<close>
         
 ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
-(File.read (Path.explode "./Translator/t16.txt"))\<close>
+(File.read (Path.explode "./t16.txt"))\<close>
 
 lemma coupleddsim_implies_winning_strategy:
   assumes

@@ -1,0 +1,38 @@
+proof (subst preorder.mult\<^sub>D\<^sub>M[where less_eq = "(in_rel ?R)\<^sup>=\<^sup>="])
+  define X where "X = {(Qfin, Qeq)}"
+  define Y where "Y = insert ?Q ?B - (?A \<inter> insert ?Q ?B)"
+  have "?f X \<noteq> {#}"
+    unfolding X_def by auto
+  moreover from assms(1,2) have "?f X \<subseteq># ?C"
+    unfolding X_def by (auto intro!: image_eqI[where x = "(Qfin, Qeq)"])
+  moreover from assms(1,2,4) have XY:
+    "insert ?Q (?A \<union> ?B) = \<Q>fin - X \<union> Y" "X \<subseteq> \<Q>fin" "(\<Q>fin - X) \<inter> Y = {}" "finite X" "finite Y"
+    unfolding X_def Y_def by auto
+  with assms(2) have "?f (insert ?Q (?A \<union> ?B)) = ?C - ?f X + ?f Y"
+    by (force simp: mset_set_Union mset_set_Diff multiset.map_comp o_def
+        dest: subset_imp_msubset_mset_set elim: subset_mset.trans
+        intro!: subset_imp_msubset_mset_set image_mset_subseteq_mono subset_mset.diff_add_assoc2
+        trans[OF image_mset_Diff])
+  moreover
+  { fix A
+    assume "A \<in> Y"
+    then have "A \<in> insert ?Q ?B"
+      unfolding Y_def by blast
+    with assms(3,4) have "nongens (fst A) \<subseteq> nongens Qfin - {x}"
+      using Gen_cp_subst[of _ Qfin x] Gen_simp[OF cov_Gen_qps[OF assms(4)]]
+        gen_Gen_simp[OF gen.intros(7)[OF disjI1], of _ Qfin _ "DISJ (qps G)"]
+      by (fastforce simp: nongens_def fv_subst simp del: cp.simps
+          intro!: gen.intros(7) dest!: fv_cp[THEN set_mp] fv_simp[THEN set_mp] fv_DISJ[THEN set_mp, rotated 1]
+          elim: cov_fv[OF assms(4) _ qps_in, THEN conjunct2, THEN set_mp]
+          cov_fv[OF assms(4) _ eqs_in, THEN conjunct2, THEN set_mp])
+    with assms(3) have "nongens (fst A) \<subset> nongens Qfin"
+      by auto
+    with assms(5) have "\<exists>B \<in> X. nongens (fst A) \<subset> nongens (fst B) \<and> nongens (fst B) \<subseteq> F"
+      by (auto simp: X_def nongens_def)
+  }
+  with XY have "\<And>A. A \<in># ?f Y \<Longrightarrow> \<exists>B. B \<in># ?f X \<and> A \<subset> B \<and> B \<subseteq> F"
+    by auto
+  ultimately
+  show "\<exists>X Y. X \<noteq> {#} \<and> X \<subseteq># ?C \<and> ?f (insert ?Q (?A \<union> ?B)) = ?C - X + Y \<and> (\<forall>k. k \<in># Y \<longrightarrow> (\<exists>a. a \<in># X \<and> k \<subset> a \<and> a \<subseteq> F))"
+    by blast
+qed (unfold_locales, auto)
