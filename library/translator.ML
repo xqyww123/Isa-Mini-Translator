@@ -143,8 +143,8 @@ val translate  : Toplevel.state * Token.src list -> ast'
 val translate' : Toplevel.state -> string -> ast'
 
 type version = string (*can be `refined`, `raw` that is not refined*)
-val translate_m  : string list -> Toplevel.state * Token.src list -> (string * mast') list
-val translate'm  : Toplevel.state -> string -> (string * mast') list
+val translate_m  : string list -> Toplevel.state * Token.src list -> (string * (mast' * exn list)) list
+val translate'm  : Toplevel.state -> string -> (string * (mast' * exn list)) list
 
 val print_ast  :  ast' -> string
 val print_mast : bool (*prints response*) -> mast' -> string
@@ -5086,7 +5086,8 @@ fun translate_m targets (s, toks) =
       val ret = Unsynchronized.ref []
       val _ = Minilang.set_reporter item_reporter
       fun report cat rep =
-            if mast_cheat' rep then rep else (ret := (cat, rep) :: !ret ; rep)
+            if mast_cheat' rep then rep else (ret := (cat, (rep, [])) :: !ret ; rep)
+      fun err cat E = (ret := (cat, ([], [E])) :: !ret; NONE)
       val raw = trans_to_minlang (translate (s, toks)) s0 |> fst
              |> norm_Mtac                            (*destroys state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
@@ -5100,7 +5101,7 @@ fun translate_m targets (s, toks) =
               then raise Translation_Fail "Some proof obligation fails"
               else ( (* warning (print_mast true refined); *)
                      if gen_target "refined"
-                     then ret := ("refined", refined) :: !ret
+                     then ret := ("refined", (refined, [])) :: !ret
                      else () )
       val _ = if gen_target "reord_raw"
               then \<^try>\<open> raw
@@ -5108,7 +5109,8 @@ fun translate_m targets (s, toks) =
                      |> validatem ctxt0 (Minilang.INIT' ps)
                      |> report "reord_raw" 
                      |> SOME
-                   catch _ => NONE\<close>
+                   catch E =>
+                        err "reord_raw" E \<close>
               else NONE
       val _ = if gen_target "reord_refined"
               then \<^try>\<open> refined
@@ -5116,7 +5118,8 @@ fun translate_m targets (s, toks) =
                      |> validatem ctxt0 (Minilang.INIT' ps)
                      |> report "reord_refined"
                      |> SOME
-                   catch _ => NONE \<close>
+                   catch E =>
+                        err "reord_defined" E \<close>
               else NONE
       val _ = warning (String.concatWith " " ("produce: " :: map (fst) (!ret)))
    in !ret

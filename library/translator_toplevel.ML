@@ -2,8 +2,7 @@ signature ML_TRANSLATOR_TOP = sig
 
 type reporter = { report : Position.T (*position of goal statement*)
                          * Position.T (*position of the first line of the proof*)
-                         * (string * string) list (*translation result*)
-                         * exn list (*errors*)
+                         * (string * (string (*translation result*) * exn list (*errors*))) list
                         -> unit,
                   start: Position.T -> bool,
                   declaration : Position.T * string -> unit,
@@ -67,8 +66,7 @@ in
 
 type reporter = { report : Position.T (*position of goal statement*)
                          * Position.T (*position of the first line of the proof*)
-                         * (string * string) list (*translation result*)
-                         * exn list (*errors*)
+                         * (string * (string (*translation result*) * exn list (*errors*))) list
                         -> unit,
                   start: Position.T -> bool,
                   declaration : Position.T * string -> unit,
@@ -77,17 +75,17 @@ type reporter = { report : Position.T (*position of goal statement*)
 fun interactive_reporter () =
   let val success = Unsynchronized.ref 0
       val total   = Unsynchronized.ref 0
-   in { report = (fn (_, pos, strs, errs) => (
-            if null errs
+   in { report = (fn (_, pos, rets) => (
+            if forall (null o snd o snd) rets
             then ( success := !success + 1 ;
                    REPL.origin_tracing ([("Translated line " ^ string_of_int (the (Position.line_of pos))),
                                  ", succeeded ", string_of_int (!success), "/", string_of_int (!total),
-                                 "\n"] @ maps (fn (k,v) => [k," : ",v,"\n"]) strs) )
+                                 "\n"] @ maps (fn (k,(v,_)) => [k," : ",v,"\n"]) rets) )
             else REPL.origin_warning (
                         "Fail to translate " :: string_of_int (the (Position.line_of pos)) ::
                         ", succeeded " :: string_of_int (!success) :: "/" :: string_of_int (!total)
-                     :: "\n" :: [String.concatWith "\n" (
-                          map (String.concat o Runtime.exn_message_list) errs)] )
+                     :: "\n" :: [String.concatWith "\n" (maps (
+                              map (String.concat o Runtime.exn_message_list) o snd o snd) rets)] )
         )),
         start  = (fn _ => (total := !total +1; true)),
         declaration = (fn (pos, str) =>
@@ -153,43 +151,48 @@ fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_comman
     then if #start reporter pos
       then let
           val ret = Unsynchronized.ref []
-          val errs= Unsynchronized.ref []
           val prf_spans = Minilang_Aux.extract_proof remaining
           val prf = map (fn (_, Command_Span.Span (_, src)) => filter Token.is_proper src) prf_spans
           
           val origin = String.concatWith "\n" (map (String.concat o Minilang_Aux.print_toks) prf)
           val spec   = String.concat (Minilang_Aux.print_toks toks)
-          val _ = ret := ("origin", origin) :: !ret
+          val _ =
+              if member (op =) targets "origin"
+              then ret := ("origin", (origin, [])) :: !ret
+              else ()
           val _ =
               if member (op =) targets "goal"
-              then ret := ("goal", spec) :: !ret
+              then ret := ("goal", (spec, [])) :: !ret
               else ()
           val _ =
               if member (op =) targets "isar-SH"
               then \<^try>\<open>
                 let val thor = Thor.translate_thor false state prf_spans
-                 in ret := ("isar-SH", thor) :: !ret
+                 in ret := ("isar-SH", (thor, [])) :: !ret
                 end 
-                catch _ => ()\<close>
+                catch E =>
+                    ret := ("isar-SH", ("", [E])) :: !ret \<close>
               else ()
           val _ =
               if member (op =) targets "isar-SH*"
               then \<^try>\<open>
                 let val thor = Thor.translate_thor true state prf_spans
-                 in ret := ("isar-SH*", thor) :: !ret
+                 in ret := ("isar-SH*", (thor, [])) :: !ret
                 end 
-                catch X => errs := X :: !errs\<close>
+                catch E =>
+                    ret := ("isar-SH*", ("", [E])) :: !ret\<close>
               else ()
           val _ =
               if exists (member (op =) targets) ["refined", "raw", "reord_raw", "reord_refined"]
               then \<^try>\<open>let
                   val asts = MinLang_Translator.translate_m targets (state, prf)
-                  val strs = map (apsnd (MinLang_Translator.print_mast true)) asts
+                  val strs = map (apsnd (apfst (MinLang_Translator.print_mast true))) asts
                   val _ = REPL.origin_warning [origin]
                in ret := strs @ !ret
-              end catch E => errs := E :: !errs \<close>
+              end catch E =>
+                  ret := ("refined", ("", [E])) :: !ret \<close>
               else ()
-       in #report reporter (pos, next_pos, !ret, !errs)
+       in #report reporter (pos, next_pos, !ret)
         ; (NONE, NONE)
       end
       else (NONE, NONE)
@@ -236,6 +239,8 @@ fun thy_packer {name, imports, ...} =
 
 fun socket_reporter (cin,cout) =
   let open MessagePackBinIO.Unpack MessagePackBinIO.Pack
+      val packError = packList packString
+                    o map (Minilang_Aux.trim_markup o String.concat o Runtime.exn_message_list)
    in { start = (fn pos =>
           let val _ = doPack (packPair (packInt, pos_packer)) (0, pos) cout 
               val _ = BinIO.StreamIO.flushOut cout
@@ -243,12 +248,10 @@ fun socket_reporter (cin,cout) =
            in cin := cin'
            ; ret
           end),
-        report = (fn (pos_spec, pos_proof, strs, errs) => (
-            doPack (packTuple5 (packInt, pos_packer, pos_packer,
-                                packPairList (packString, packString),
-                                packList packString))
-                   (2, pos_spec, pos_proof, strs,
-                     map (Minilang_Aux.trim_markup o String.concat o Runtime.exn_message_list) errs) cout
+        report = (fn (pos_spec, pos_proof, rets) => (
+            doPack (packTuple4 (packInt, pos_packer, pos_packer,
+                                packPairList (packString, packPair (packString, packError))))
+                   (2, pos_spec, pos_proof, rets) cout
           ; BinIO.StreamIO.flushOut cout )),
         declaration = (fn (pos, line) =>
             (doPack (packTuple3 (packInt, pos_packer, packString))
