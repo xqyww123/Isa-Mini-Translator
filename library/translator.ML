@@ -17,7 +17,7 @@ type structured_statement' = var list       (*vars*)
 exception Parse_Fail of Token.src list
 exception Translation_Fail of string
 exception Unsupported of string
-exception Bad_Source
+exception Bad_Source of string
 
 val print_comments : bool Unsynchronized.ref
 
@@ -450,7 +450,7 @@ type structured_statement' = var list       (*vars*)
                            * attr_statement (*shows*)
 
 exception Parse_Fail of Token.src list
-exception Bad_Source
+exception Bad_Source of string
 
 datatype var_inst = VI_Fix of string
                   | VI_Inside_Prop of int
@@ -1733,7 +1733,7 @@ exception IGNORE
 fun ignore _ _ = raise IGNORE
 
 fun TODO name _ _ = raise Unsupported name
-fun BAD_SOURCE _ _ = raise Bad_Source
+fun BAD_SOURCE _ _ = raise Bad_Source ""
 
 val standard_tac = Method.Source [mk_idt "standard"]
 val no_tac = Method.Source [mk_idt "-"]

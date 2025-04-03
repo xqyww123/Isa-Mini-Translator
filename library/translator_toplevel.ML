@@ -23,6 +23,7 @@ end
 structure ML_Translator_Top : ML_TRANSLATOR_TOP = struct
 
 exception Translation_Fail = MinLang_Translator.Translation_Fail
+exception Bad_Source = MinLang_Translator.Bad_Source
 
 local
 
@@ -209,7 +210,12 @@ fun init_translator targets base_dir_of_theories reporter = (
     ; REPL.register_plugin ("MinLang.Translator", REPL_plugin targets reporter)
     ; REPL.add_evaluated_theories ("Minilang.Minilang_Base", \<^theory>\<open>Minilang_Base\<close>) )
 
-fun translate_src cfg src = (REPL.RE cfg src; ())
+fun translate_src cfg src =
+  let val errs = REPL.collect_erros (REPL.RE cfg src) []
+   in if null errs
+    then ()
+    else raise Bad_Source (String.concatWith "\n" errs)
+  end
 
 fun translate_file path =
   let val path' = Path.explode path
