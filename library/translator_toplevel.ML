@@ -221,12 +221,16 @@ fun translate_file path =
   let val path' = Path.explode path
       val thy_qualifier = the_default "HOL" (REPL_Aux.parse_session_name path')
       val src = File.read path'
-   in translate_src { thy_qualifier = thy_qualifier,
+      val dir = Path.dir path'
+   in \<^try>\<open> (
+      REPL.set_base_dir dir
+    ; translate_src { thy_qualifier = thy_qualifier,
                       file = SOME path,
                       position_label = NONE,
                       additional_libs = [] (*["Minilang.Minilang_Base"]*),
                       import_dir = NONE }
-                    src
+                    src )
+   finally REPL.reset_base_dir () \<close>
   end
 
 
