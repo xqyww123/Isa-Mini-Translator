@@ -4,6 +4,7 @@ type reporter = { report : Position.T (*position of goal statement*)
                          * Position.T (*position of the first line of the proof*)
                          * (string * (string (*translation result*) * exn list (*errors*))) list
                         -> unit,
+                  error : exn -> unit,
                   start: Position.T -> bool,
                   declaration : Position.T * string -> unit,
                   new_thy : Position.T * Thy_Header.header -> unit }
@@ -70,6 +71,7 @@ type reporter = { report : Position.T (*position of goal statement*)
                          * (string * (string (*translation result*) * exn list (*errors*))) list
                         -> unit,
                   start: Position.T -> bool,
+                  error : exn -> unit,
                   declaration : Position.T * string -> unit,
                   new_thy : Position.T * Thy_Header.header -> unit }
 
@@ -88,6 +90,7 @@ fun interactive_reporter () =
                      :: "\n" :: [String.concatWith "\n" (maps (
                               map (String.concat o Runtime.exn_message_list) o snd o snd) rets)] )
         )),
+        error = (fn exn => REPL.origin_warning (Runtime.exn_message_list exn)),
         start  = (fn _ => (total := !total +1; true)),
         declaration = (fn (pos, str) =>
             REPL.origin_warning [str]),
@@ -249,8 +252,8 @@ fun thy_packer {name, imports, ...} =
 
 fun socket_reporter (cin,cout) =
   let open MessagePackBinIO.Unpack MessagePackBinIO.Pack
-      val packError = packList packString
-                    o map (Minilang_Aux.trim_markup o String.concat o Runtime.exn_message_list)
+      val packError  = packString o Minilang_Aux.trim_markup o String.concat o Runtime.exn_message_list
+      val packErrors = packList packError
    in { start = (fn pos =>
           let val _ = doPack (packPair (packInt, pos_packer)) (0, pos) cout 
               val _ = BinIO.StreamIO.flushOut cout
@@ -260,8 +263,11 @@ fun socket_reporter (cin,cout) =
           end),
         report = (fn (pos_spec, pos_proof, rets) => (
             doPack (packTuple4 (packInt, pos_packer, pos_packer,
-                                packPairList (packString, packPair (packString, packError))))
+                                packPairList (packString, packPair (packString, packErrors))))
                    (2, pos_spec, pos_proof, rets) cout
+          ; BinIO.StreamIO.flushOut cout )),
+        error = (fn exn => (
+            doPack (packPair (packInt, packError)) (7, exn) cout
           ; BinIO.StreamIO.flushOut cout )),
         declaration = (fn (pos, line) =>
             (doPack (packTuple3 (packInt, pos_packer, packString))
@@ -283,9 +289,12 @@ fun REPL_App (cin, cout) =
                 of SOME bad => error ("Unknown translation target: " ^ bad ^
                                 "\nAcceptable targets: " ^ String.concatWith ", " KNOWN_TARGETS)
                  | NONE => ()
+      val reporter = socket_reporter (cin,cout)
 
-   in REPL.register_plugin ("MinLang.Translator", REPL_plugin targets (socket_reporter (cin,cout)))
-    ; translate_file path
+   in REPL.register_plugin ("MinLang.Translator", REPL_plugin targets reporter)
+    ; \<^try>\<open>
+      translate_file path
+      catch E => #error reporter E\<close>
     ; doPack packInt 3 cout
     ; BinIO.StreamIO.flushOut cout
   end
