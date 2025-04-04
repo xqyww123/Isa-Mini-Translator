@@ -3,7 +3,7 @@
    Author/Maintainer: Jesper Bengtson (jebe.dk), 2012
 *)
 theory MS_Test_Early
-  imports Pi_Calculus.Agent MS_Translator
+  imports Pi_Calculus.Agent Minilang_Translator.MS_Translator
 begin
 
 declare name_fresh[simp del]
@@ -23,15 +23,16 @@ lemma alphaBoundOutput:
 
   assumes A1: "x' \<sharp> P"
 
-  shows "a<\<nu>x> \<prec> P = a<\<nu>x'> \<prec> ([(x, x')] \<bullet> P)"
-proof(cases "x=x'")
-  assume "x=x'"
-  thus ?thesis by simp
-next
-  assume "x \<noteq> x'"
-  with A1 show ?thesis
-    by(simp add: residual.inject alpha name_fresh_left name_calc)
-qed
+shows "a<\<nu>x> \<prec> P = a<\<nu>x'> \<prec> ([(x, x')] \<bullet> P)"
+ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+"proof(case_tac \"x=x'\")\n\
+\  assume \"x=x'\"\n\
+\  thus ?thesis by simp\n\
+\next\n\
+\  assume \"x \<noteq> x'\"\n\
+\  with A1 show ?thesis\n\
+\    by(simp add: residual.inject alpha name_fresh_left name_calc)\n\
+\qed"\<close>
 
 declare name_fresh[simp]
 

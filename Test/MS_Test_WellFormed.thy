@@ -5,7 +5,7 @@ theory MS_Test_WellFormed imports
   Slicing.Labels 
   Slicing.CFGExit_wf
   Slicing.CDepInstantiations
-  MS_Translator
+  Minilang_Translator.MS_Translator
 begin
 
 
@@ -42,8 +42,8 @@ lemma rhs_interpret_eq:
 
  
    
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
-(File.read (Path.explode "./Translator/t14"))\<close>
+ML_val \<open>val _ =  MinLang_Translator.translate'  @{Isar.state}
+(File.read (Path.explode "./Test/t14"))\<close>
 
 proof(induct b arbitrary:v')
   case (Val v)
@@ -62,7 +62,7 @@ next
   from \<open>interpret (b1 \<guillemotleft>bop\<guillemotright> b2) s = Some v'\<close> 
   have "\<exists>v\<^sub>1 v\<^sub>2. interpret b1 s = Some v\<^sub>1 \<and> interpret b2 s = Some v\<^sub>2 \<and>
                 binop bop v\<^sub>1 v\<^sub>2 = Some v'"
-    apply(cases "interpret b1 s",simp)
+    apply(case_tac "interpret b1 s",simp)
     apply(cases "interpret b2 s",simp)
     by(case_tac "binop bop a aa",simp+)
   then obtain v\<^sub>1 v\<^sub>2 where "interpret b1 s = Some v\<^sub>1"

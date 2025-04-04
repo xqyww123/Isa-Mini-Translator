@@ -188,6 +188,7 @@ val method_assumption = tac_for_1 (Method.Source [tok_assumption])
 val tok_insert = mk_idt "insert"
 val tok_where = mk_idt "where"
 val tok_symmetric = mk_idt "symmetric"
+val tok_cases = mk_idt "cases"
 
 (* parse facts in tactic *)
 
@@ -3034,7 +3035,6 @@ val rewrite_subgoal = linear_pass NONE (
    | L => L
 )
 
-
 (** Pass II - Ensuring One Proof Block for One Goal **)
 
 (* Normalize Tactics *)
@@ -3866,6 +3866,34 @@ val pass_goal_cases = linear_pass NONE (
    | L => L
   end
 )
+
+(* replace `induct_tac`, `case_tac` with `induct`, `cases` *)
+
+val replace_case_tac = linear_pass NONE (
+let fun qchk (Method.Source (tok :: _)) = Token.content_of tok = "case_tac"
+      | qchk (Method.Combinator (_, _, tacs)) = exists qchk tacs
+      | qchk _ = false
+    fun pass_tac (tac as Method.Source (tok :: args)) =
+          if Token.content_of tok = "case_tac"
+          then Method.Source (tok_cases :: args)
+          else tac
+      | pass_tac (Method.Combinator (oi, opr, tacs)) =
+          Method.Combinator (oi, opr, map pass_tac tacs)
+      | pass_tac M = M
+ in fn origin as (s0, TACTIC (tac, using, time)) :: L =>
+        if qchk tac
+        then let val src' = (s0, TACTIC (pass_tac tac, using, time)) :: L
+          in case try (eval (the s0)) src'
+               of SOME (_, src'') => src''
+                | NONE => origin
+         end
+        else origin
+     | L => L
+end
+)
+
+
+(* translate bracket *)
 
 (*requires proof state before every `MPROOF`*)
 val collect_fix_assms_case = elementwise_pass NONE (
@@ -5088,7 +5116,7 @@ fun translate (s, toks) =
    |> pad_vars_in_case                               (*requires and preserves states*)
    |> assign_factname                                (*requires and preserves states*)
    |> pass_also_finally                              (*preserves states*)
-   |> norm_assums                                    (*preserves states*)
+   |> norm_assums                                    (*destroys   states*)
    |> validate ps "Validation Fail: assign_factname" (*NECESSARY*)
    |> resolve_this                                   (*preserves states*)
    |> norm_FROM_WITH_USING                           (*preserves states*)
@@ -5099,6 +5127,7 @@ fun translate (s, toks) =
    |> split_proof_pass                               (*restructure, messes up states of PROOF*)
    |> move_assms                                     (*destroys states, requires no states*)
    |> validate ps "Validation Fail: split_proof_pass" (*NECESSARY*)
+   |> replace_case_tac                               (*preserves states*)
    |> pass_goal_cases                                (*destroys states, requires states of MPROOF*)
    |> collect_fix_assms_case                         (*preserves states*)
    |> translating_bracket                            (*restructure, messes up states of BRCBLK*)
