@@ -191,13 +191,13 @@ show "n choose k \<le> n choose n div 2"
 apply ((use "2" in \<open> intro binomial_antimono \<close>)[1])
 (*3 subgoals*)
 apply ((simp)[1])  
-(*NEXT*)   
+(*NEXT*)    
 apply ((simp)[1])  
 (*NEXT*)    
-apply ((simp)[1])
+apply ((simp)[1]) 
 (*end 3 subgoals*) 
 .   
-mqed     
+mqed      
 (*NEXT*) 
 apply (simp_all add : binomial_eq_0)
 (*end 3 subgoals*) 

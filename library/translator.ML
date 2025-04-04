@@ -3898,15 +3898,44 @@ val translating_bracket = linear_pass NONE (
 
 fun count P L = fold (fn x => fn n => n + P x) L 0
 
-fun desugar_ss ctxtx (ss : structured_statement') =
-  let val (stmt, ctxt) = Proof_Context.read_statement (#1 ss) (map snd (#2 ss)) (map snd (#3 ss)) ctxtx
+fun desugar_obtain ctxt (B, (vs, terms)) =
+  let val vs' = map (fn (B,SOME T,mf) => (B, SOME (Syntax.read_typ ctxt T), mf)
+                      | (B,NONE,mf) => (B,NONE,mf)) vs
+      val (_, ctxt') = Proof_Context.add_fixes vs' ctxt
+      val stmts' = Syntax.read_props ctxt' terms
+                |> map (print_prop ctxt')
+   in (B, (vs, stmts'))
+  end
+fun desugar_obtains ctxt : Element.obtains -> Element.obtains = map (desugar_obtain ctxt)
+
+fun desugar_ss ctxtx (ss : structured_statement) : structured_statement =
+  let val (stmt, ctxt) = Proof_Context.read_statement (#1 ss) (#2 ss) (map snd (#3 ss)) ctxtx
+      val assms' = map (map (print_prop ctxt)) (#assumes stmt)
       val shows' = map (map (print_prop ctxt)) (#shows stmt)
-      val ss' = (#1 ss, #2 ss, map2 (fn (AT, props) => fn props' =>
-                                        (AT, props' ~~ map snd props)) (#3 ss) shows')
+      val ss' = (#1 ss,
+                 map2 (fn props => fn props' => props' ~~ map snd props) (#2 ss) assms',
+                 map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) (#3 ss) shows')
    in ss'
   end
 
-fun desugar_ss' (s, ss) = (s, desugar_ss (Proof.context_of (the s)) ss)
+fun desugar_ss' ctxtx additional_vs (ss : structured_statement') : structured_statement' =
+  let val (stmt, ctxt) = Proof_Context.read_statement
+                              (additional_vs @ #1 ss) (map snd (#2 ss)) (map snd (#3 ss)) ctxtx
+      val assms' = map (map (print_prop ctxt)) (#assumes stmt)
+      val shows' = map (map (print_prop ctxt)) (#shows stmt)
+      val ss' = (#1 ss,
+                 map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) (#2 ss) assms',
+                 map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) (#3 ss) shows')
+   in ss'
+  end
+
+fun desugar_at_ss ctxt vs (ass : attr_statement) : attr_statement =
+  let val (stmt, ctxt) = Proof_Context.read_statement vs [] (map snd ass) ctxt
+      val shows' = map (map (print_prop ctxt)) (#shows stmt)
+   in map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) ass shows'
+  end
+
+fun desugar_ss'pair (s, ss) = (s, desugar_ss' (Proof.context_of (the s)) [] ss)
 
 fun desugar_if_need s (ss : structured_statement') =
   let val ctxt = Proof.context_of (the s)
@@ -3917,16 +3946,28 @@ fun desugar_if_need s (ss : structured_statement') =
                                                 | Var (("dddot", _), _) => true
                                                 | _ => false))
    in if has_thesis
-    then desugar_ss ctxt ss
+    then desugar_ss' ctxt [] ss
          handle TERM _ => ss
     else ss
   end
 
-val desugar_thesis = linear_pass NONE (
+val desugar = linear_pass NONE (
   fn (s, HAVE (ss, body)) :: L =>
-     (s, HAVE (desugar_if_need s ss, body)) :: L
+     (s, HAVE (desugar_ss' (Proof.context_of (the s)) [] ss, body)) :: L
    | (s, SHOW (ss, body)) :: L =>
-     (s, SHOW (desugar_if_need s ss, body)) :: L
+     (s, SHOW (desugar_ss' (Proof.context_of (the s)) [] ss, body)) :: L
+   | (s, THUS (ss, body)) :: L =>
+     (s, THUS (desugar_ss' (Proof.context_of (the s)) [] ss, body)) :: L
+   | (s, HENCE (ss, body)) :: L =>
+     (s, HENCE (desugar_ss' (Proof.context_of (the s)) [] ss, body)) :: L
+   | (s, ASSUME ss) :: L =>
+     (s, ASSUME (desugar_ss (Proof.context_of (the s)) ss)) :: L
+   | (s, ISAR_OBTAIN ((vs, ss), body)) :: L =>
+     (s, ISAR_OBTAIN ((vs, desugar_ss (Proof.context_of (the s)) ss), body)) :: L
+   | (s, ISAR_CONSIDER ((B, obts), body)) :: L =>
+     (s, ISAR_CONSIDER ((B, desugar_obtains (Proof.context_of (the s)) obts), body)) :: L
+   | (s, DEFINE (vs, ss, vs')) :: L =>
+     (s, DEFINE (vs, desugar_at_ss (Proof.context_of (the s)) (vs @ vs') ss, vs')) :: L
    | L => L
 )
 
@@ -3969,7 +4010,7 @@ val reduce_MPROOFs = linear_pass NONE (
             else error "BUG reduce_MPROOFs, unequal vs"
         (*; if count (fn AI_Inside_Prop _ => 1 | _ => 0) asms = length asms' then ()
             else error "BUG reduce_MPROOFs, unequal vs" *)
-          ; (s0, MPROOF (pre @ pre', desugar_ss' ss', SOME (vs'', asms'', kase''), prf')) :: L
+          ; (s0, MPROOF (pre @ pre', desugar_ss'pair ss', SOME (vs'', asms'', kase''), prf')) :: L
         end
        | _ => origin)
    | L => L
@@ -4979,7 +5020,8 @@ val red_SIMP = linear_passm NONE (
 fun translate (s, toks) =
   let val s = Toplevel.command_exception false
                   (Toplevel.proof (Proof.map_context ( Config.put Printer.show_markup false
-                                                    #> Config.put Goal.quick_and_dirty true ))
+                                                    #> Config.put Goal.quick_and_dirty true
+                                                    #> Config.put show_types true ))
                                   Toplevel.empty) s
       val ps = if Toplevel.is_proof s then Toplevel.proof_of s
                                       else error "Not a proof state"
@@ -4987,6 +5029,7 @@ fun translate (s, toks) =
     ; Thread_Data.put initial_state (SOME ps)
     ; initial_pass (s, toks)
    (* |> validate ps "Validation Fail: Initial Pass" (*UNNECESSARY*) *)
+   |> desugar                                        (*preserves states*)
    |> pad_vars_in_case                               (*requires and preserves states*)
    |> assign_factname                                (*requires and preserves states*)
    |> pass_also_finally                              (*preserves states*)
@@ -4994,7 +5037,6 @@ fun translate (s, toks) =
    |> validate ps "Validation Fail: assign_factname" (*NECESSARY*)
    |> resolve_this                                   (*preserves states*)
    |> norm_FROM_WITH_USING                           (*preserves states*)
-   |> desugar_thesis
    |> rewrite_subgoal
    (* |> validate ps "Validation Fail: norm_FROM_WITH_USING" (*UNNECESSARY*) *)
    |> pass_consider                                  (*preserves states*)
@@ -5023,7 +5065,8 @@ fun translate_m (s, toks) =
             |> Proof.map_context ( Config.put Printer.show_markup false
                                 #> Config.put Goal.quick_and_dirty true
                                 #> Config.put Minilang.enable_cache_by_step false
-                                #> Config.put Phi_Sledgehammer_Solver.sledgehammer_params "timeout = 20")
+                                #> Config.put Phi_Sledgehammer_Solver.sledgehammer_params "timeout = 20"
+                                #> Config.put show_types true )
       val s0 = Minilang.INIT' ps
       val ctxt0 = Proof.context_of ps
       val ret = Unsynchronized.ref []
