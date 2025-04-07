@@ -145,7 +145,7 @@ mqed
 
 lemma "n choose k \<le> n choose (n div 2)"
                                                     
-ML_val \<open>val _ = MinLang_Translator.translate' @{Isar.state}
+ML_val \<open>val _ = MinLang_Translator.translate'm @{Isar.state}
 "proof -\n\
     \have \"k \<le> n div 2 \<longleftrightarrow> 2*k \<le> n\" by linarith\n\
     \consider \"2*k \<le> n\" | \"2*k \<ge> n\" \"k \<le> n\" | \"k > n\" by linarith\n\

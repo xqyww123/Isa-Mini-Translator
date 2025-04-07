@@ -2324,7 +2324,7 @@ fun print_mast print_response =
            :: "CONSIDER "
            :: implode_with " | " (
                 map (fn ([],ss) => print_structured_statement ss
-                      | (vs,ss) => print_space_vars vs
+                      | (vs,ss) => print_vars vs
                                  @ " where "
                                 :: print_structured_statement ss
                     ) branches)
@@ -3973,25 +3973,39 @@ val translating_bracket = linear_pass NONE (
 
 fun count P L = fold (fn x => fn n => n + P x) L 0
 
-fun desugar_obtain ctxt (B, (vs, terms)) =
-  let val vs' = map (fn (B,SOME T,mf) => (B, SOME (Syntax.read_typ ctxt T), mf)
-                      | (B,NONE,mf) => (B,NONE,mf)) vs
-      val (_, ctxt') = Proof_Context.add_fixes vs' ctxt
-      val stmts' = Syntax.read_props ctxt' terms
-                |> map (print_prop ctxt')
-   in (B, (vs, stmts'))
-  end
-fun desugar_obtains ctxt : Element.obtains -> Element.obtains = map (desugar_obtain ctxt)
-
-fun desugar_ss ctxtx (ss : structured_statement) : structured_statement =
-  let val (stmt, ctxt) = Proof_Context.read_statement (#1 ss) (#2 ss) (map snd (#3 ss)) ctxtx
+fun desugar_ss00 ctxtx additional_vs (ss : structured_statement)
+  : Proof_Context.statement * structured_statement =
+  let val (stmt, ctxt) = Proof_Context.read_statement (additional_vs @ #1 ss) (#2 ss) (map snd (#3 ss)) ctxtx
       val assms' = map (map (print_prop ctxt)) (#assumes stmt)
       val shows' = map (map (print_prop ctxt)) (#shows stmt)
       val ss' = (#1 ss,
                  map2 (fn props => fn props' => props' ~~ map snd props) (#2 ss) assms',
                  map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) (#3 ss) shows')
-   in ss'
+   in (stmt, ss')
   end
+
+fun desugar_ss ctxtx (ss : structured_statement) : structured_statement =
+  snd (desugar_ss00 ctxtx [] (ss : structured_statement))
+
+fun desugar_obtain ctxt (vs, ss) =
+  let val (stmt, ss') = desugar_ss00 ctxt vs ss
+      val vs' = map (
+              fn (B,SOME T,mf) => (B,SOME T,mf)
+               | (B,NONE,mf) =>
+                  case AList.lookup (op =) (#fixes stmt) (Binding.name_of B)
+                    of SOME term =>
+                          (B, SOME (print_ty ctxt (Term.fastype_of term)), mf)
+                     | NONE => error "BUG desugar_obtain") vs
+   in (vs', ss')
+  end
+
+fun desugar_consider ctxt (B, (vs, terms)) =
+  let val (vs', (_, _, terms')) =
+          desugar_obtain ctxt (vs, ([], [], [(Binding.empty_atts, map (rpair []) terms)]))
+   in (B, (vs', flat (map (map fst o snd) terms')))
+  end
+fun desugar_considers ctxt : Element.obtains -> Element.obtains = map (desugar_consider ctxt)
+
 
 fun desugar_ss' ctxtx additional_vs (ss : structured_statement') : structured_statement' =
   let val (stmt, ctxt) = Proof_Context.read_statement
@@ -4038,9 +4052,9 @@ val desugar = linear_pass NONE (
    | (s, ASSUME ss) :: L =>
      (s, ASSUME (desugar_ss (Proof.context_of (the s)) ss)) :: L
    | (s, ISAR_OBTAIN ((vs, ss), body)) :: L =>
-     (s, ISAR_OBTAIN ((vs, desugar_ss (Proof.context_of (the s)) ss), body)) :: L
+     (s, ISAR_OBTAIN (desugar_obtain (Proof.context_of (the s)) (vs, ss), body)) :: L
    | (s, ISAR_CONSIDER ((B, obts), body)) :: L =>
-     (s, ISAR_CONSIDER ((B, desugar_obtains (Proof.context_of (the s)) obts), body)) :: L
+     (s, ISAR_CONSIDER ((B, desugar_considers (Proof.context_of (the s)) obts), body)) :: L
    | (s, DEFINE (vs, ss, vs')) :: L =>
      (s, DEFINE (vs, desugar_at_ss (Proof.context_of (the s)) (vs @ vs') ss, vs')) :: L
    | L => L

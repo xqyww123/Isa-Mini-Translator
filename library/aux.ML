@@ -18,7 +18,6 @@ val print_mixfix : mixfix -> string list
 val print_var : binding * string option * mixfix -> bstring list
 val print_vars : (binding * string option * mixfix) list -> string list
 val print_for : (binding * string option * mixfix) list -> string list
-val print_space_vars : (binding * string option * mixfix) list -> string list
 
 val print_attr : Token.T list list -> string list
 val print_attrbind  : binding * Token.T list list -> string list
@@ -161,7 +160,6 @@ fun print_var (v, SOME T, synt) = [Binding.name_of v, " :: ", quote_space (trim_
 fun print_vars vs = implode_with " and " (map print_var vs)
 fun print_for  [] = []
   | print_for  vs = " for " :: print_vars vs
-fun print_space_vars vs = implode_with " " (map print_var vs)
 
 fun print_attr [] = []
   | print_attr attrs =
