@@ -1183,21 +1183,21 @@ fun replace_fact_expr_with_name'core ctxt raw_expr =
 fun replace_fact_expr_with_name _ (origin as (Facts.Named _, _)) = [origin]
   | replace_fact_expr_with_name opt_ctxt (origin as (Facts.Fact raw_expr, attrs)) =
       let val ctxt = (case opt_ctxt of SOME ctxt => ctxt
-                                     | NONE => error "replace_fact_expr_with_name - opt_ctxt" )
+                                     | NONE => error "BUG replace_fact_expr_with_name - opt_ctxt" )
        in case replace_fact_expr_with_name'core ctxt raw_expr
        of SOME x => [(x, attrs)]
         | NONE   => [origin]
       end
 
-fun replace_fact_expr_with_name_in_toks _ [] _ = error "replace_fact_expr_with_name_in_toks - empty"
+fun replace_fact_expr_with_name_in_toks _ [] _ = error "BUG replace_fact_expr_with_name_in_toks - empty"
   | replace_fact_expr_with_name_in_toks opt_ctxt (toks as tok :: _) continue =
-  let fun fallback [] = error "replace_fact_expr_with_name_in_toks - empty"
+  let fun fallback [] = error "BUG replace_fact_expr_with_name_in_toks - empty"
         | fallback (tok :: toks) = tok :: continue toks
    in if Token.is_kind Token.Cartouche tok
     then case try Parse.term toks
            of SOME (raw_expr, toks') =>
                let val ctxt = (case opt_ctxt of SOME ctxt => ctxt
-                                              | NONE => error "replace_fact_expr_with_name_in_toks - opt_ctxt" )
+                                              | NONE => error "BUG replace_fact_expr_with_name_in_toks - opt_ctxt" )
                 in case replace_fact_expr_with_name'core ctxt raw_expr
                 of SOME x => tokenize_factref x @ continue toks'
                  | NONE   => fallback toks
@@ -1413,8 +1413,8 @@ fun print_method (Method.Source toks) = print_toks toks
   | print_method (m as Method.Basic _) =
       if pointer_eq (m, method_sorry)
       then ["msorry"]
-      else error "Fail to print internal methods"
-  | print_method (Method.Combinator _) = error "Bad method combinator"
+      else error "BUG Fail to print internal methods"
+  | print_method (Method.Combinator _) = error "BUG Bad method combinator"
 
 
 
@@ -1424,7 +1424,7 @@ fun print_ty_raw' (Type (N, TS)) = ["("] @ maps print_ty_raw' TS @ [") ", N]
 fun print_ty_raw ctxt T =
   let val s = String.concat (print_ty_raw' T)
    in if \<^try>\<open>Syntax.read_typ ctxt s = T catch _ => false\<close>
-      then s else error "Fail to print type in a raw way"
+      then s else error "BUG Fail to print type in a raw way"
   end
 fun print_ty ctxt T =
   let val s = trim_markup (Syntax.string_of_typ ctxt T)
@@ -1472,7 +1472,7 @@ fun print_tm ctxt tm =
    in if \<^try>\<open>Syntax.read_term ctxt s aconv tm catch _ => false\<close> then s
     else let val s4 = String.concat (print_tm_raw'_ty ctxt tm)
       in if \<^try>\<open>Syntax.read_prop ctxt s4 aconv tm catch _ => false\<close> then s4
-         else raise TERM("print_prop", [tm])
+         else raise TERM("BUG print_prop", [tm])
      end
   end
   end
@@ -1491,7 +1491,7 @@ fun print_prop ctxt tm =
    in if \<^try>\<open>Syntax.read_prop ctxt s3 aconv tm catch _ => false\<close> then s3
     else let val s4 = String.concat (print_tm_raw'_ty ctxt (filter tm))
       in if \<^try>\<open>Syntax.read_prop ctxt s4 aconv tm catch _ => false\<close> then s4
-         else raise TERM("print_prop", [tm])
+         else raise TERM("BUG print_prop", [tm])
      end
   end
   end
@@ -2028,8 +2028,8 @@ fun eval_single (CASE arg) s
       = consider_cmd arg true BB s
   | eval_single (OPEN_MODULE (expr, _)) s
       = Interpretation.interpret_cmd expr s
-  | eval_single (MPROOF _) _ = error "Cannot evaluate MPROOF by a single step"
-  | eval_single (BRANCH_SUBGOALS _) _ = error "Cannot evaluate BRANCH_SUBGOALS by a single step"
+  | eval_single (MPROOF _) _ = error "BUG Cannot evaluate MPROOF by a single step"
+  | eval_single (BRANCH_SUBGOALS _) _ = error "BUG Cannot evaluate BRANCH_SUBGOALS by a single step"
   | eval_single (ALSO rules) s =
       Calculation.also_cmd (case rules of [] => NONE | _ => SOME rules) false s
         |> Seq.the_result "BUG RHUI"
@@ -2074,7 +2074,7 @@ fun eval_singlem (MCRUSH arg) s = Minilang.CRUSH (apsnd (mk_with_clause (Minilan
   | eval_singlem (MCFG_BUNDL args) s = Minilang.CONFIG_BUNDL'' args s
   | eval_singlem (MINDUCT args) s = Minilang.INDUCT'' args s
   | eval_singlem (MCASE args) s = Minilang.CASE_SPLIT'' args s
-  | eval_singlem (MBRANCH_SUBGOALS _) _ = error "MBRANCH_SUBGOALS cannot be evaluated by a single step"
+  | eval_singlem (MBRANCH_SUBGOALS _) _ = error "BUG MBRANCH_SUBGOALS cannot be evaluated by a single step"
   | eval_singlem (MINSERT facts) s =
       Minilang.APPLY'' NONE [] (Method.Basic (fn ctxt => Method.insert (Attrib.eval_thms ctxt facts))) s
 (*  | eval_singlem (MCALC ((B,src,_),_)) s = s
@@ -2504,7 +2504,7 @@ val parse_isar : Toplevel.state * Token.src list -> ast' =
           | (ctxt, OPEN_MODULE (expr, _)) => BLK (fn ast => (ctxt, OPEN_MODULE (expr, ast)))
           | (ctxt, PROOF (txt, _)) =>
               let val (ast, s_srcs'') = parse (s', srcs)
-                  fun chk [] = error "proof is not ended by `qed`"
+                  fun chk [] = raise Unsupported "proof is not ended by `qed`"
                     | chk [(_, QED _)] = ()
                     | chk (_ :: L) = chk L
                in chk ast
@@ -2512,7 +2512,7 @@ val parse_isar : Toplevel.state * Token.src list -> ast' =
               end
           | (ctxt, BRCBLK (data, _)) =>
               BLK (fn ast =>
-                let fun chk [] = error "`{` is not ended by `}`"
+                let fun chk [] = raise Unsupported "`{` is not ended by `}`"
                       | chk [(_, ENDBLK)] = ()
                       | chk (_ :: L) = chk L
                  in chk ast
@@ -2683,13 +2683,13 @@ fun assign_factname ast =
                     of [(src, _)] =>
                       let val ctxt = Proof.context_of (eval_single ast (the s))
                           fun name_of (Free (N, _)) = Thm.def_name (Variable.revert_fixed ctxt N)
-                            | name_of _ = error "BUG: malformed definition"
+                            | name_of _ = error "BUG malformed definition"
                           fun LHS_of (Const(\<^const_name>\<open>Pure.imp\<close>, _) $ _ $ X) = LHS_of X
                             | LHS_of (Const(\<^const_name>\<open>Pure.all\<close>, _) $ Abs (_, _, X)) = LHS_of X
                             | LHS_of (Const(\<^const_name>\<open>Trueprop\<close>, _) $ X) = LHS_of X
                             | LHS_of (Const(\<^const_name>\<open>Pure.eq\<close>, _) $ X $ _) = name_of (Term.head_of X)
                             | LHS_of (Const(\<^const_name>\<open>HOL.eq\<close>, _) $ X $ _) = name_of (Term.head_of X)
-                            | LHS_of X = raise TERM ("BUG: malformed definition", [X])
+                            | LHS_of X = raise TERM ("BUG malformed definition", [X])
                           val prop = Syntax.read_prop ctxt src
                        in ((Binding.name (LHS_of prop), atts), props) :: pass clauses
                       end
@@ -2713,7 +2713,7 @@ fun names_of_st x = names_of_AS (#3 x)
 fun assms_of_st x = names_of_AS (#2 x)
 in
 
-fun parse_this [] = error "Fail to parse the `this` fact"
+fun parse_this [] = error "BUG Fail to parse the `this` fact"
   | parse_this ([]::R) = parse_this R
   | parse_this (((_, HAVE (st, _))::_)::_) = names_of_st st
   | parse_this (((_, ASSUME st)::_)::_) = names_of_st st
@@ -3025,7 +3025,7 @@ val rewrite_subgoal = linear_pass NONE (
 
         val show = ([], [], [(Binding.empty_atts, [(print_prop ctxt' (Thm.term_of (#concl foc)), [])])])
      in if Binding.is_empty_atts a then ()
-        else raise Translation_Fail "SUBGOAL that binds its conclusion is not supported."
+        else raise Unsupported "SUBGOAL that binds its conclusion is not supported."
       ; (s0, MPROOF (fix' @ asm',
                      (NONE, show),
                      NONE,
@@ -3230,7 +3230,7 @@ fun init_grdprf use_raw s =
 
 fun conclude_grdprf tree =
   case get_oneshot' tree
-    of NONE => error "GRDTREE doesn't complete"
+    of NONE => error "BUG GRDTREE doesn't complete"
      | SOME (GRDTREE (prfs, [])) => prfs
      | SOME (GRDTREE (prfs, [child]))  => prfs @ conclude_grdprf child
      | SOME (GRDTREE (prfs, children)) => prfs @ [(NONE, BRANCH_SUBGOALS (map conclude_grdprf children))]
@@ -3427,7 +3427,7 @@ fun separate_prf tail =
             then if null L
                then ( tail := [ast']
                     ; leaves)
-               else error "BUG: more proofs after the end"
+               else error "BUG more proofs after the end"
             else let
                  val N = Thm.nprems_of (#goal (Proof.goal (the s)))
                  val leaves' =
@@ -3466,7 +3466,7 @@ fun separate_prf tail =
              in set_oneshot (hd leaves, GRDTREE ([(NONE, INCLUDING names)], [lf]) )
               ; sep L (lf :: tl leaves)
             end
-        | sep _ _ = error "BUG: should not occur here"
+        | sep _ _ = error "BUG should not occur here"
    in sep
   end
 
@@ -3649,7 +3649,7 @@ fun HVC_of ctxt prev ((vs, hs, show0) : structured_statement') concl =
                       let val name = Binding.name_of B
                           val N = length tms
                        in map_index (fn (i,tm) => (AI_Fix (name,i,N),tm) ) tms
-                      end   | _ => error "BUG: assumptions should have no attribute here." )
+                      end   | _ => error "BUG assumptions should have no attribute here." )
          in (map_index (fn (i, (b, Free (a,_))) => (a, VI_Fix b)
                          | _ => error "BUG fE67") (#fixes stmt)
                      @ fixes0
@@ -3660,7 +3660,7 @@ fun HVC_of ctxt prev ((vs, hs, show0) : structured_statement') concl =
         end
 
 fun split_proof s0 prfs =
-  let fun spl  _   _  [] = error "Not ended by QED"
+  let fun spl  _   _  [] = error "BUG Not ended by QED"
         | spl buf ret [(s, QED tac)] = ((the s, tac), rev (rev buf :: ret))
         | spl buf ret ((_, NEXT)::L) = spl [] (rev buf :: ret) L
         | spl buf ret (x :: L) = spl (x::buf) ret L
@@ -3712,7 +3712,7 @@ fun split_proof s0 prfs =
               end ) goals blkss
       val _ = if null remaining_goals
               then ()
-              else error "Some subgoal is not paired"
+              else error "BUG Some subgoal is not paired"
 
       val result = 
           if length (filter_out is_some ordered_prfs') <= 1 orelse
@@ -3729,8 +3729,8 @@ fun split_proof s0 prfs =
                           |  _      => error "BUG h8KYedJsTC2jm63bGgXzfg"
                val prfs = map conclude_grdprf grdprfs
                fun retro [] [] = []
-                 | retro []  _ = error "BUG: more separations remains"
-                 | retro (NONE :: _) [] = error "BUG: insufficient separations"
+                 | retro []  _ = error "BUG more separations remains"
+                 | retro (NONE :: _) [] = error "BUG insufficient separations"
                  | retro (NONE :: xs) (y :: ys) = y :: retro xs ys
                  | retro (SOME x :: xs) ys = [(NONE, MPROOF x)] :: retro xs ys
             in mk_branch_subgoals (retro ordered_prfs' prfs)
@@ -3768,7 +3768,7 @@ val pass_consider = linear_pass NONE (
                     ; exists_fact_in P ast ) )
               o snd) L
          in if bad
-          then error "the result of consider is used for purposes other than case split"
+          then raise Unsupported "the result of consider is used for purposes other than case split"
           else origin
         end
      | L => L
@@ -3831,7 +3831,7 @@ val pass_goal_cases = linear_pass NONE (
                       let val ctxt = Proof.context_of (the s)
                        in (if null fixes then []
                            else [
-                             (s, FIX (map2 (fn NONE => raise Translation_Fail "goal_cases has underscore"
+                             (s, FIX (map2 (fn NONE => raise Unsupported "goal_cases has underscore"
                                              | SOME name => fn (_, T) =>
                                                     (Binding.name name, SOME (print_ty ctxt T), NoSyn) )
                                            fixes vars)) ] )
@@ -3907,7 +3907,7 @@ val collect_fix_assms_case = elementwise_pass NONE (
 
               val (vs, hs) = case match_goal (Context.Proof ctxt) G (fixes, assms, mG')
                                of SOME x => x
-                                | NONE => error "BUG: fails to match the goal"
+                                | NONE => error "BUG fails to match the goal"
               val cas = get_first (fn (_, CASE ((B,_),args)) => SOME (B, args)
                                     | _ => NONE ) pre
            in (s0, MPROOF (pre, (sss, ss), SOME (vs, hs, cas), prf))
@@ -3927,7 +3927,7 @@ val collect_fix_assms_case = elementwise_pass NONE (
        | X => X
 )
 
-val empty_vector = Vector.tabulate (0, fn _ => error "")
+val empty_vector = Vector.tabulate (0, fn _ => error "BUG empty vector")
 
 fun count F [] = 0
   | count F (x :: L) = F x + count F L
@@ -3947,7 +3947,7 @@ val translating_bracket = linear_pass NONE (
                                of [((_,atts), tms)] => [((B,atts),tms)]
                                 | _ => if forall (null o snd o fst) shows0
                                        then [((B,[]), maps snd shows0)]
-                                       else raise Translation_Fail "BRCBLK of multiple goals having different attributes"
+                                       else raise Unsupported "BRCBLK of multiple goals having different attributes"
                 val ss' = (fixes @ fixes0, assms' @ assms0, shows0)
                 val blocks = maps (fn (B, props) => map (fn (prop, pats) =>
                       let val shows1 = [(B, [(prop, pats)])]
@@ -3960,7 +3960,7 @@ val translating_bracket = linear_pass NONE (
              in [(NONE, HAVE (ss', prf @ [(NONE, DOT)]))]
              |> validate (the s0) "translating_bracket"
             end
-          | pass _ [] = raise Translation_Fail "Unsupported Bracket Block"
+          | pass _ [] = raise Unsupported "Unsupported Bracket Block"
           | pass pre ((_, ASSUME _) :: L) = pass pre L
           | pass pre ((_, FIX _) :: L) = pass pre L
           | pass pre (x :: L) = pass (x :: pre) L
@@ -4191,13 +4191,13 @@ fun trans_pass vs [] s = mk_end' vs s
                                       else if is_ind tac
                                       then case tac of Method.Source (tok :: toks) =>
                                            (tac, toks, Token.content_of tok)
-                                      else error "BUG: Bad tactic")
+                                      else error "BUG Bad tactic 1")
                  | _ => if pointer_eq (raw_tac, method_sorry)
                         then (method_sorry, [], "msorry")
                         else if is_ind raw_tac
                         then case raw_tac of Method.Source (toks as tok :: _) =>
                              (raw_tac, toks, Token.content_of tok)
-                        else error "BUG: Bad tactic"
+                        else error "BUG Bad tactic 2"
           val si1 = case L of [] => NONE
                             | x :: _ => SOME (the (fst x))
        in case name
@@ -4353,7 +4353,7 @@ and translate_cases (using,_) tac_name tac toks nvs L s =
           val need_IH_map = (case tac_name of "induct" => true | _ => false)
           val mast = (case tac_name
                         of "cases" => MCASE | "induct" => MINDUCT | "induction" => MINDUCT
-                         | _ => error ("Bad tactic " ^ tac_name))
+                         | _ => raise Unsupported ("tactic " ^ tac_name))
                      (tl toks, get_vars branches, using)
 
           val kase = current_case ()
@@ -4391,7 +4391,7 @@ and translate_cases (using,_) tac_name tac toks nvs L s =
                                   | collapse L = L
                              in collapse ivs0
                             end )) m
-                       | _ => error "BUG: IH_map lost"
+                       | _ => error "BUG IH_map lost"
                 else []
           
        (* val _ = if not need_IH_map orelse length IH_map = length branches
@@ -4443,12 +4443,12 @@ and translate_cases (using,_) tac_name tac toks nvs L s =
                  in ((body' @ END) :: bodies', s)
                 end
             | fold_map (q, _  ) ( ((_, MPROOF (pre0, _, SOME (_, _, SOME (B0, (name, _))), prf0)) :: L) :: bodies) saa =
-                let val _ = if q = "" then error "BUG: case qualifier lost" else ()
+                let val _ = if q = "" then error "BUG case qualifier lost" else ()
                     val ivs = if need_IH_map
                               then case AList.lookup (op =) IH_map name
                                      of SOME x => x
                                                |> map (fn (name,i,n,N) => (q ^ "." ^ name,i,n,N))
-                                      | NONE => error "BUG: IH_map not found"
+                                      | NONE => error "BUG IH_map not found"
                               else []
                     val trans =
                         let val p = Binding.name_of B0
@@ -4507,14 +4507,14 @@ and translate_cases (using,_) tac_name tac toks nvs L s =
       end
     | SOME (considers, body) => let
       val _ = case toks of [_] => ()
-                         |  _  => raise Translation_Fail "Unsupported case tactic"
+                         |  _  => raise Unsupported "Unsupported case tactic"
       val branches' = map2 (fn (B,stmt) =>
             let val correct_name = Binding.name_of B
              in fn (_, MPROOF (pre0, _, SOME (_, _, SOME (B', (name, params))), prf0)) :: tail =>
                   let val _ = if correct_name = name then ()
-                              else raise Translation_Fail "seems the proof blocks are not ordered"
+                              else error "BUG seems the proof blocks are not ordered"
                       val _ = if null params then ()
-                              else raise Translation_Fail "Unsupported FBUI"
+                              else raise Unsupported "Unsupported FBUI"
                       val (pre,prf) =
                           if Binding.name_of B' = name then (pre0, prf0)
                           else let
@@ -4529,7 +4529,7 @@ and translate_cases (using,_) tac_name tac toks nvs L s =
                           end
                    in pre @ prf @ tail
                   end
-                 | (_, MPROOF _) :: _ => raise Translation_Fail "Bad MPROOF block for case split"
+                 | (_, MPROOF _) :: _ => raise Unsupported "Bad MPROOF block for case split"
                  | L => L
             end) considers branches
       val consider_brs = map snd considers
@@ -4947,7 +4947,7 @@ val refinement = linear_passm NONE (
              of SOME (_, ast) =>
                   if mast_cheat' ast
                   then case L
-                    of [_] => raise Translation_Fail "Some proof obligation fails"
+                    of [_] => raise Minilang.OPR_FAIL (Minilang.PROOF_FAIL, "Some proof obligation fails")
                      |  _  => L
                   else ast
               | NONE => L
@@ -5121,7 +5121,7 @@ fun translate (s, toks) =
                                                     #> Config.put show_types true ))
                                   Toplevel.empty) s
       val ps = if Toplevel.is_proof s then Toplevel.proof_of s
-                                      else error "Not a proof state"
+                                      else error "BUG Not a proof state"
    in Thread_Data.put counter_store NONE
     ; Thread_Data.put initial_state (SOME ps)
     ; parse_isar (s, toks)
@@ -5160,7 +5160,7 @@ fun translate (s, toks) =
 fun translate_m targets (s, toks) =
   let val gen_target = member (op =) targets
       val ps = if Toplevel.is_proof s then Toplevel.proof_of s
-                                      else error "Not a proof state"
+                                      else error "BUG Not a proof state"
       val ps = ps
             |> Proof.map_context ( Config.put Printer.show_markup false
                                 #> Config.put Goal.quick_and_dirty true
@@ -5184,7 +5184,7 @@ fun translate_m targets (s, toks) =
              |> red_SIMP                           
              |> validatem ctxt0 (Minilang.INIT' ps)
       val _ = if mast_cheat' refined
-              then raise Translation_Fail "Some proof obligation fails"
+              then raise Minilang.OPR_FAIL (Minilang.PROOF_FAIL, "Some proof obligation fails")
               else ( warning (print_mast true refined);
                      if gen_target "refined"
                      then ret := ("refined", (refined, [])) :: !ret

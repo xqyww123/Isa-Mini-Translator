@@ -74,7 +74,7 @@ val is_tactic =
                   |  _      => pass stack L
               )
         | pass _ [] = false
-        | pass _ X = raise Translation_Fail "Malformed Source"
+        | pass _ X = raise Unsupported "Malformed Source"
    in pass [BWD]
   end
 
@@ -130,7 +130,7 @@ val extract_proof =
                   | ".."    => (tr, sp) :: pass (pop BWD stack) L
                   |  _      => (tr, sp) :: pass stack L
               )
-        | pass _ _ = raise Translation_Fail "Malformed Source"
+        | pass _ _ = raise Unsupported "Malformed Source"
    in pass [BWD]
   end
 
