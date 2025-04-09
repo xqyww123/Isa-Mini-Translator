@@ -560,7 +560,7 @@ datatype mast =
 (* Roughly Shared *)
   | MHAVE   of structured_statement' * (Minilang.state option * mast) list
   | MRULE   of fact' list * fact' list
-  | MCHOOSE of (string * (binding * string option * mixfix) list (*vars*)) list (*terms*)
+  | MCHOOSE of (string (*term*) * (binding * string option * mixfix) list (*vars*)) list
   | MOPEN_MODULE of Expression.expression * (Minilang.state option * mast) list
   | MCFG_FACTS of (Attrib.binding * fact' list) list
   | MCFG_BUNDL of string list
@@ -1496,6 +1496,10 @@ fun print_prop ctxt tm =
   end
   end
   end
+
+fun may_print_tm ctxt (prop,fallback) =
+  print_tm ctxt prop
+    handle TERM _ => fallback
 
 fun may_print_prop ctxt (prop,fallback) =
   print_prop ctxt prop
@@ -3599,14 +3603,19 @@ fun structured_statement_2_a_src ((vs, assm, show) : structured_statement) =
    in map ( apsnd (map (String.concat o quant o add_assms o single o trim_markup o fst))) show
   end
 
-fun assumes_and_fixes_of assms fixes [] = (assms, fixes)
-  | assumes_and_fixes_of assms fixes ((s, ASSUME ss) :: L)
-      = assumes_and_fixes_of (structured_statement_2_terms (Proof.context_of (the s)) ss @ assms) fixes L
-  | assumes_and_fixes_of assms fixes ((s, FIX vs) :: L) =
+fun assumes_and_fixes_of thy assms fixes [] = (assms, fixes)
+  | assumes_and_fixes_of thy assms fixes ((s, ASSUME ss) :: L)
+      = let val new = structured_statement_2_terms (Proof.context_of (the s)) ss
+                   |> filter_out (fn (_, term) => exists (fn (_, term') =>
+                        Pattern.equiv thy (term, term')
+                      ) assms)
+         in assumes_and_fixes_of thy (new @ assms) fixes L
+        end
+  | assumes_and_fixes_of thy assms fixes ((s, FIX vs) :: L) =
       let val (names', _) = Proof_Context.add_fixes_cmd vs (Proof.context_of (the s))
-       in assumes_and_fixes_of assms ((names' ~~ map (VI_Fix o Binding.name_of o #1) vs) @ fixes) L
+       in assumes_and_fixes_of thy assms ((names' ~~ map (VI_Fix o Binding.name_of o #1) vs) @ fixes) L
       end
-  | assumes_and_fixes_of assms0 fixes0 ((s, CASE arg) :: L)
+  | assumes_and_fixes_of thy assms0 fixes0 ((s, CASE arg) :: L)
       = let val (_, ((name, pos), xs)) = restore_case arg
             val ctxt = Proof.context_of (the s)
 
@@ -3622,12 +3631,18 @@ fun assumes_and_fixes_of assms fixes [] = (assms, fixes)
                            #> (fn (name, tms) => map_index (fn (i,tm) =>
                                   (AI_Fix (name,i,length tms), tm)) tms)) assumes
             val new_fixes = names' ~~ map (VI_Fix o Binding.name_of o #1) fixes
-         in assumes_and_fixes_of (assms @ assms0) (new_fixes @ fixes0) L
+
+            val assms0' = assms0
+                  |> filter_out (fn (_, term) => exists (fn (_, term') =>
+                        Pattern.equiv thy (term, term')
+                      ) assms)
+         in assumes_and_fixes_of thy (assms @ assms0') (new_fixes @ fixes0) L
         end
-  | assumes_and_fixes_of assms fixes (_ :: L) = assumes_and_fixes_of assms fixes L
+  | assumes_and_fixes_of thy assms fixes (_ :: L) = assumes_and_fixes_of thy assms fixes L
 
 fun HVC_of ctxt outter_ctxt prev ((vs, hs, show0) : structured_statement') concl =
-        let val (assms0, fixes0) = assumes_and_fixes_of [] [] prev
+        let val thy = Proof_Context.theory_of ctxt
+            val (assms0, fixes0) = assumes_and_fixes_of thy [] [] prev
             val (stmt, ctxt') = Proof_Context.read_statement vs (map snd hs) (map snd show0) ctxt
             val concl' = Syntax.read_prop ctxt' concl
 
@@ -5121,6 +5136,43 @@ val red_SIMP = linear_passm NONE (
    | L => L
 )
 
+
+(* reprint *)
+
+val reprint_pass = linear_passm NONE (
+  fn (so, MDEFINE (vs, ass, vsx)) :: L =>
+     let val ctxt = Minilang.context_of (the so)
+         val ass' = desugar_at_ss ctxt [] ass
+      in (so, MDEFINE (vs, ass', vsx)) :: L
+     end
+   | (so, MHAVE (ss, body)) :: L =>
+     let val ctxt = Minilang.context_of (the so)
+         val ss' = desugar_ss' ctxt [] ss
+      in (so, MHAVE (ss', body)) :: L
+     end
+   | (so, MCONSIDER (cases, body)) :: L =>
+     let val ctxt = Minilang.context_of (the so)
+         fun reprint (vs, ss) =
+            let val (_, ss') = desugar_ss00 ctxt vs ss
+             in (vs, ss')
+            end
+      in (so, MCONSIDER (map reprint cases, body)) :: L
+     end
+   | (so, MCHOOSE terms) :: L =>
+     let val ctxt = Minilang.context_of (the so)
+         fun reprint (term, vs0) =
+          let val vs = map (fn (B,T,synt) =>
+                          (B,Option.map (Syntax.read_typ ctxt) T,synt)) vs0
+              val (_, ctxt') = Proof_Context.add_fixes vs ctxt
+              val termx = Syntax.read_term ctxt' term
+              val term' = may_print_tm ctxt' (termx, term)
+           in (term', vs0)
+          end
+      in (so, MCHOOSE (map reprint terms)) :: L
+     end
+   | L => L
+)
+
 (*** Toplevel ***)
 
 fun translate (s, toks) =
@@ -5176,8 +5228,11 @@ fun translate_m targets (s, toks) =
                                 #> Config.put Minilang.enable_cache_by_step false
                                 #> Config.put Phi_Sledgehammer_Solver.sledgehammer_params "timeout = 20"
                                 #> Config.put show_types true )
+      val ps_notyp = ps
+            |> Proof.map_context ( Config.put show_types false )
       val s0 = Minilang.INIT' ps
       val ctxt0 = Proof.context_of ps
+      val ctxt0_notyp = Config.put show_types false ctxt0
       val ret = Unsynchronized.ref []
       val _ = Minilang.set_reporter item_reporter
       fun report cat rep =
@@ -5198,6 +5253,22 @@ fun translate_m targets (s, toks) =
                      if gen_target "refined"
                      then ret := ("refined", (refined, [])) :: !ret
                      else () )
+      val _ = if gen_target "untyp_refined"
+              then \<^try>\<open> refined
+                     |> validatem ctxt0_notyp (Minilang.INIT' ps_notyp)
+                     |> reprint_pass
+                     |> report "untyp_refined"
+                     |> SOME
+                   catch E => err "untyp_refined" E\<close>
+              else NONE
+      val _ = if gen_target "untyp_raw"
+              then \<^try>\<open> raw
+                     |> validatem ctxt0_notyp (Minilang.INIT' ps_notyp)
+                     |> reprint_pass
+                     |> report "untyp_raw"
+                     |> SOME
+                   catch E => err "untyp_raw" E\<close>
+              else NONE
       val _ = if gen_target "reord_raw"
               then \<^try>\<open> raw
                      |> move_lemma                           (*destroys state*)

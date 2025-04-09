@@ -187,7 +187,8 @@ fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_comman
                     ret := ("isar-SH*", ("", [E])) :: !ret\<close>
               else ()
           val _ =
-              if exists (member (op =) targets) ["refined", "raw", "reord_raw", "reord_refined"]
+              if exists (member (op =) targets) ["refined", "raw", "reord_raw", "reord_refined",
+                                                 "untyp_refined", "untyp_raw"]
               then \<^try>\<open>let
                   val asts = MinLang_Translator.translate_m targets (state, prf)
                   val strs = map (apsnd (apfst (MinLang_Translator.print_mast true))) asts

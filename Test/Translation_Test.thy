@@ -196,17 +196,18 @@ apply ((simp)[1])
 apply ((simp)[1])  
 (*NEXT*)    
 apply ((simp)[1])
-(*end 3 subgoals*)  
-.  
-mqed       
-(*NEXT*)  
+(*end 3 subgoals*)   
+.   
+mqed        
+(*NEXT*)    
 apply (simp_all add : binomial_eq_0)
 (*end 3 subgoals*) 
-.    
+.     
 mqed      
 .                  
                            
-ML \<open>ML_Translator_Top.init_translator ["refined", "origin", "raw", "goal"] (Path.explode "/tmp/xxx")
+ML \<open>ML_Translator_Top.init_translator ["untyp_refined", "untyp_raw", "refined", "origin", "raw", "goal"]
+                                      (Path.explode "/tmp/xxx")
                                       (ML_Translator_Top.interactive_reporter ())\<close>
   
   
