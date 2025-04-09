@@ -3657,10 +3657,10 @@ fun HVC_of ctxt outter_ctxt prev ((vs, hs, show0) : structured_statement') concl
                          | _ => error "BUG fE67") (#fixes stmt)
                      @ fixes0
                      @ emb_vs ,
-             map (apsnd (singleton (Variable.export_terms ctxt outter_ctxt)))
+             map (apsnd (singleton (Variable.exportT_terms ctxt outter_ctxt)))
                  (assms_stmt @ assms0 @ emb_asms),
              (* maps (map (pair ("",0,1))) (#assumes stmt) @ assms0, *)
-             singleton (Variable.export_terms ctxt outter_ctxt) concl'')
+             singleton (Variable.exportT_terms ctxt outter_ctxt) concl'')
         end
 
 fun split_proof s0 prfs =
@@ -4743,7 +4743,7 @@ fun norm_tac_phase1 (origin as (s, MTACTIC (Method.Source (tok :: toks), using, 
            end
         | _ => origin
       end
-  | norm_tac_phase1 ((_, MINSERT _) :: L) = L
+(*  | norm_tac_phase1 ((_, MINSERT _) :: L) = L *)
   | norm_tac_phase1 L = L
 
 in

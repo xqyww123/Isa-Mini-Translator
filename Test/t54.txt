@@ -1,0 +1,18 @@
+proof (induct X Y rule: less_nmultiset_induct)
+  case (MSet_MSet M N)
+  then have "M < N" by (simp add: less_multiset_ext\<^sub>D\<^sub>M_less)
+  then show ?case
+  proof (cases "M = {#}" "N = {#}" rule: bool.exhaust[case_product bool.exhaust])
+    case [simp]: False_False
+    show ?thesis
+    unfolding depth_nmset.simps(2) Let_def False_False Suc_le_mono set_image_mset image_is_empty
+      set_mset_eq_empty_iff if_False
+    proof (intro iffD2[OF Max_le_iff] ballI iffD2[OF Max_ge_iff]; (elim imageE)?; simp)
+      fix X
+      assume [simp]: "X \<in># M"
+      with MSet_MSet(1)[of N M X, simplified] \<open>M < N\<close> show "\<exists>Y\<in>#N. |X| \<le> |Y|"
+        by (meson ex_gt_imp_less_multiset less_asym' less_depth_nmset_imp_less_nmultiset
+          not_le_imp_less)
+    qed
+  qed (auto simp: depth_nmset.simps(2))
+qed simp_all

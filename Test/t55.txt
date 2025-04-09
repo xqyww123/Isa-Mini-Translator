@@ -1,0 +1,23 @@
+proof (induct i rule: less_induct)
+  case (less i)
+  define A :: "'a nmultiset set" where "A = {X. |X| < i}"
+  from less have "wf ((depth_nmset :: 'a nmultiset \<Rightarrow> nat) <*mlex*>
+      (\<Union>j < i. {(X, Y). |X| = j \<and> |Y| = j \<and> X < Y}))"
+    by (intro wf_UN wf_mlex) auto
+  then have *: "wf (mult {(X :: 'a nmultiset, Y). X \<in> A \<and> Y \<in> A \<and> X < Y})"
+    by (intro wf_mult, elim wf_subset) (force simp: A_def mlex_prod_def not_less_iff_gr_or_eq
+      dest!: less_depth_nmset_imp_less_nmultiset)
+  show ?case
+  proof (cases i)
+    case 0
+    then show ?thesis
+      by (auto simp: inj_on_def intro!: wf_subset[OF
+        wf_Un[OF wf_map_prod_image[OF wf, of Elem] wf_UN[of "Elem ` UNIV" "\<lambda>x. {(x, MSet {#})}"]]])
+  next
+    case (Suc n)
+    then show ?thesis
+      by (intro wf_subset[OF wf_map_prod_image[OF *, of MSet]])
+        (auto 0 4 simp: map_prod_def image_iff inj_on_def A_def
+          dest!: less_multiset_ext\<^sub>D\<^sub>M_imp_mult[of _ A, rotated -1] split: prod.splits)
+  qed
+qed

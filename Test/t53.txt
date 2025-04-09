@@ -1,0 +1,25 @@
+proof (induct X)
+  case (MSet M)
+  from MSet(2) show ?case
+  unfolding less_nmultiset.simps less_multiset_ext\<^sub>D\<^sub>M_def
+  proof safe
+    fix X Y :: "'a nmultiset multiset"
+    define XY where "XY = {(x, y). x \<in># X \<and> y \<in># Y \<and> y < x}"
+    then have fin: "finite XY" and trans: "trans XY"
+      by (auto simp: trans_def intro: trans_less_nmultiset
+        finite_subset[OF _ finite_cartesian_product])
+    assume "X \<noteq> {#}" "X \<subseteq># M" "M = M - X + Y"
+    then have "X = Y"
+      by (auto simp: mset_subset_eq_exists_conv)
+    with MSet(1) \<open>X \<subseteq># M\<close> have "irrefl XY"
+      unfolding XY_def by (force dest: mset_subset_eqD simp: irrefl_def)
+    with trans have "acyclic XY"
+      by (simp add: acyclic_irrefl)
+    moreover
+    assume "\<forall>k. k \<in># Y \<longrightarrow> (\<exists>a. a \<in># X \<and> k < a)"
+    with \<open>X = Y\<close> \<open>X \<noteq> {#}\<close> have "\<not> acyclic XY"
+      by (intro notI, elim finite_acyclic_wf[OF fin, elim_format])
+        (auto dest!: spec[of _ "set_mset Y"] simp: wf_eq_minimal XY_def)
+    ultimately show False by blast
+  qed
+qed simp
