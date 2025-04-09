@@ -38,7 +38,7 @@ by (cases n, simp_all)
 
 lemma cont2cont_if_below_const [cont2cont, simp]:
   assumes f: "cont (\<lambda>x. f x)" and g: "cont (\<lambda>x. g x)"
-  shows "cont (\<lambda>x. if f x \<sqsubseteq> d then \<bottom> else g x)"
+  shows "cont (\<lambda>x. if f x \<sqsubseteq> d then pcpo_class.bottom else g x)"
 proof (rule cont_apply [OF f])
   show "\<And>x. cont (\<lambda>y. if y \<sqsubseteq> d then \<bottom> else g x)"
     unfolding cont_def is_lub_def is_ub_def ball_simps
@@ -78,7 +78,7 @@ lemma fix_argument_promote:
 
 proof(rule below_antisym)
   have "(\<Lambda> x. g x\<cdot>(fix\<cdot>(g x))) = (\<Lambda> x. fix\<cdot>(g x))"
-    apply (subst fix_eq) apply (simp)
+    by (subst fix_eq, simp)
   with \<open>cont g\<close> show "fix\<cdot>(\<Lambda> f x. g x\<cdot>(f\<cdot>x)) \<sqsubseteq> (\<Lambda> x. fix\<cdot>(g x))"
     by (simp add: fix_least cont2cont_LAM)
 next

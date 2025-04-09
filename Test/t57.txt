@@ -1,0 +1,92 @@
+proof -
+  obtain c A m where fin: "finite A" and p: "p = Polynomial.smult c (\<Prod>a\<in>A. [:- a, 1:] ^ m a)"
+    and *: "\<And>x. m x = 0 \<longleftrightarrow> x \<notin> A"
+  proof (induct p arbitrary: thesis rule: poly_root_induct[where P="\<lambda>_. True"])
+    case 0
+    show ?case
+    proof (rule 0)
+      show "0 = Polynomial.smult 0 (\<Prod>a\<in>{}. [:- a, 1:] ^ (\<lambda>_. 0) a)" by simp
+    qed simp_all
+  next
+    case (no_roots p)
+    have "Polynomial.degree p = 0"
+    proof (rule ccontr)
+      assume "Polynomial.degree p \<noteq> 0"
+      hence "0 < Polynomial.degree p" by simp
+      then obtain z where "poly p z = 0" by (rule rootE)
+      moreover have "poly p z \<noteq> 0" by (rule no_roots) blast
+      ultimately show False by simp
+    qed
+    then obtain c where p: "p = [:c:]" by (rule degree_eq_zeroE)
+    show ?case
+    proof (rule no_roots)
+      show "p = Polynomial.smult c (\<Prod>a\<in>{}. [:- a, 1:] ^ (\<lambda>_. 0) a)" by (simp add: p)
+    qed simp_all
+  next
+    case (root a p)
+    obtain A c m where 1: "finite A" and p: "p = Polynomial.smult c (\<Prod>a\<in>A. [:- a, 1:] ^ m a)"
+      and 2: "\<And>x. m x = 0 \<longleftrightarrow> x \<notin> A" by (rule root.hyps) blast
+    define m' where "m' = (\<lambda>x. if x = a then Suc (m x) else m x)"
+    show ?case
+    proof (rule root.prems)
+      from 1 show "finite (insert a A)" by simp
+    next
+      have "[:a, - 1:] * p = [:- a, 1:] * (- p)" by simp
+      also have "\<dots> = [:- a, 1:] * (Polynomial.smult (- c) (\<Prod>a\<in>A. [:- a, 1:] ^ m a))"
+        by (simp add: p)
+      also have "\<dots> = Polynomial.smult (- c) ([:- a, 1:] * (\<Prod>a\<in>A. [:- a, 1:] ^ m a))"
+        by (simp only: mult_smult_right ac_simps)
+      also have "[:- a, 1:] * (\<Prod>a\<in>A. [:- a, 1:] ^ m a) = (\<Prod>a\<in>insert a A. [:- a, 1:] ^ m' a)"
+      proof (cases "a \<in> A")
+        case True
+        with 1 have "(\<Prod>a\<in>A. [:- a, 1:] ^ m a) = [:- a, 1:] ^ m a * (\<Prod>a\<in>A-{a}. [:- a, 1:] ^ m a)"
+          by (simp add: prod.remove)
+        also from refl have "(\<Prod>a\<in>A-{a}. [:- a, 1:] ^ m a) = (\<Prod>a\<in>A-{a}. [:- a, 1:] ^ m' a)"
+          by (rule prod.cong) (simp add: m'_def)
+        finally have "[:- a, 1:] * (\<Prod>a\<in>A. [:- a, 1:] ^ m a) =
+                          ([:- a, 1:] * [:- a, 1:] ^ m a) * (\<Prod>a\<in>A - {a}. [:- a, 1:] ^ m' a)"
+          by (simp only: mult.assoc)
+        also have "[:- a, 1:] * [:- a, 1:] ^ m a = [:- a, 1:] ^ m' a" by (simp add: m'_def)
+        finally show ?thesis using 1 by (simp add: prod.insert_remove)
+      next
+        case False
+        with 1 have "(\<Prod>a\<in>insert a A. [:- a, 1:] ^ m' a) = [:- a, 1:] ^ m' a * (\<Prod>a\<in>A. [:- a, 1:] ^ m' a)"
+          by simp
+        also from refl have "(\<Prod>a\<in>A. [:- a, 1:] ^ m' a) = (\<Prod>a\<in>A. [:- a, 1:] ^ m a)"
+        proof (rule prod.cong)
+          fix x
+          assume "x \<in> A"
+          with False have "x \<noteq> a" by blast
+          thus "[:- x, 1:] ^ m' x = [:- x, 1:] ^ m x" by (simp add: m'_def)
+        qed
+        finally have "(\<Prod>a\<in>insert a A. [:- a, 1:] ^ m' a) = [:- a, 1:] ^ m' a * (\<Prod>a\<in>A. [:- a, 1:] ^ m a)" .
+        also from False have "m' a = 1" by (simp add: m'_def 2)
+        finally show ?thesis by simp
+      qed
+      finally show "[:a, - 1:] * p = Polynomial.smult (- c) (\<Prod>a\<in>insert a A. [:- a, 1:] ^ m' a)" .
+    next
+      fix x
+      show "m' x = 0 \<longleftrightarrow> x \<notin> insert a A" by (simp add: m'_def 2)
+    qed
+  qed
+  moreover have "c = 0 \<longleftrightarrow> p = 0"
+  proof
+    assume "p = 0"
+    hence "[:c:] = 0 \<or> (\<Prod>a\<in>A. [:- a, 1:] ^ m a) = 0" by (simp add: p)
+    thus "c = 0"
+    proof
+      assume "[:c:] = 0"
+      thus ?thesis by simp
+    next
+      assume "(\<Prod>a\<in>A. [:- a, 1:] ^ m a) = 0"
+      then obtain a where "[:- a, 1:] ^ m a = 0" by (rule prod_eq_zeroE)
+      thus ?thesis by simp
+    qed
+  qed (simp add: p)
+  moreover {
+    fix z
+    have "0 < m z" if "z \<in> A" by (rule ccontr) (simp add: * that)
+    hence "poly p z = 0 \<longleftrightarrow> (c = 0 \<or> z \<in> A)" by (auto simp: p poly_prod * fin elim: prod_eq_zeroE)
+  }
+  ultimately show ?thesis ..
+qed

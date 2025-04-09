@@ -1,0 +1,18 @@
+proof
+  assume fin: "finite (UNIV::'a set)"
+  define p where "p = (\<Prod>a\<in>UNIV. [:- a, 1::'a:]) + [:-1:]"
+  have "Polynomial.degree (\<Prod>a\<in>UNIV. [:- a, 1::'a:]) = (\<Sum>a\<in>UNIV. Polynomial.degree [:- a, 1::'a:])"
+    using fin by (rule degree_prod_eq) simp
+  also have "\<dots> = (\<Sum>a\<in>(UNIV::'a set). 1)" by simp
+  also have "\<dots> = card (UNIV::'a set)" by simp
+  also from fin have "\<dots> > 0" by (rule finite_UNIV_card_ge_0)
+  finally have "0 < Polynomial.degree (\<Prod>a\<in>UNIV. [:- a, 1::'a:])" .
+  hence "Polynomial.degree [:-1:] < Polynomial.degree (\<Prod>a\<in>UNIV. [:- a, 1::'a:])" by simp
+  hence "Polynomial.degree p = Polynomial.degree (\<Prod>a\<in>UNIV. [:- a, 1::'a:])" unfolding p_def
+    by (rule degree_add_eq_left)
+  also have "\<dots> > 0" by fact
+  finally have "0 < Polynomial.degree p" .
+  then obtain z where "poly p z = 0" by (rule rootE)
+  hence "(\<Prod>a\<in>UNIV. (z - a)) = 1" by (simp add: p_def poly_prod)
+  thus False by (metis UNIV_I cancel_comm_monoid_add_class.diff_cancel fin one_neq_zero prod_zero_iff)
+qed

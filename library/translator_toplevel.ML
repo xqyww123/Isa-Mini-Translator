@@ -285,7 +285,7 @@ fun REPL_App (cin, cout) =
       val _ = cin := cin'
 
       val KNOWN_TARGETS = ["origin", "isar-SH", "isar-SH*", "refined", "raw", "reord_raw",
-                           "reord_refined", "goal"]
+                           "reord_refined", "goal", "untyp_refined", "untyp_raw"]
       val _ = case find_first (not o member (op =) KNOWN_TARGETS) targets
                 of SOME bad => error ("Unknown translation target: " ^ bad ^
                                 "\nAcceptable targets: " ^ String.concatWith ", " KNOWN_TARGETS)

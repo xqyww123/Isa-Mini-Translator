@@ -1,0 +1,27 @@
+proof -
+  have "finite I"
+  proof (rule ccontr)
+    assume "infinite I"
+    with assms show False by simp
+  qed
+  moreover from this assms obtain i where "i \<in> I" and "f i = 0"
+  proof (induct I arbitrary: thesis)
+    case empty
+    from empty(2) show ?case by simp
+  next
+    case (insert j I)
+    from insert.hyps(1, 2) have "f j * prod f I = prod f (insert j I)" by simp
+    also have "\<dots> = 0" by fact
+    finally have "f j = 0 \<or> prod f I = 0" by simp
+    thus ?case
+    proof
+      assume "f j = 0"
+      with _ show ?thesis by (rule insert.prems) simp
+    next
+      assume "prod f I = 0"
+      then obtain i where "i \<in> I" and "f i = 0" using insert.hyps(3) by blast
+      from _ this(2) show ?thesis by (rule insert.prems) (simp add: \<open>i \<in> I\<close>)
+    qed
+  qed
+  ultimately show ?thesis ..
+qed

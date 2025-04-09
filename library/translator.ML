@@ -1424,7 +1424,7 @@ fun print_ty_raw' (Type (N, TS)) = ["("] @ maps print_ty_raw' TS @ [") ", N]
 fun print_ty_raw ctxt T =
   let val s = String.concat (print_ty_raw' T)
    in if \<^try>\<open>Syntax.read_typ ctxt s = T catch _ => false\<close>
-      then s else error "BUG Fail to print type in a raw way"
+      then s else raise TERM("BUG Fail to print type in a raw way", [])
   end
 fun print_ty ctxt T =
   let val s = trim_markup (Syntax.string_of_typ ctxt T)
@@ -1465,8 +1465,17 @@ fun print_tm_raw' ctxt =
 
 fun print_tm ctxt tm =
   let val tm = Envir.beta_eta_contract tm
-      val s = trim_markup (Syntax.string_of_term ctxt tm)
-   in if \<^try>\<open>Syntax.read_term ctxt s aconv tm catch _ => false\<close> then s
+      val s1 = trim_markup (Syntax.string_of_term ctxt tm)
+   in if \<^try>\<open>Syntax.read_term ctxt s1 aconv tm catch _ => false\<close> then s1
+    else let
+      val pty = not (Config.get ctxt Printer.show_types)
+      val s2 = if pty
+               then trim_markup (Syntax.string_of_term (Config.put Printer.show_types true ctxt) tm)
+               else s1
+   in if pty andalso \<^try>\<open>Syntax.read_term ctxt s2 aconv tm catch _ => false\<close> then s2
+    else let
+      val s3 = trim_markup (Syntax.string_of_term (Config.put Printer.show_sorts true ctxt) tm)
+   in if \<^try>\<open>Syntax.read_term ctxt s3 aconv tm catch _ => false\<close> then s3
     else let
       val s = String.concat (print_tm_raw' ctxt tm)
    in if \<^try>\<open>Syntax.read_term ctxt s aconv tm catch _ => false\<close> then s
@@ -1474,6 +1483,8 @@ fun print_tm ctxt tm =
       in if \<^try>\<open>Syntax.read_prop ctxt s4 aconv tm catch _ => false\<close> then s4
          else raise TERM("BUG print_prop", [tm])
      end
+  end
+  end
   end
   end
 
@@ -1484,8 +1495,14 @@ fun print_prop ctxt tm =
         | filter X = X
    in if \<^try>\<open>Syntax.read_prop ctxt s1 aconv tm catch _ => false\<close> then s1
     else let
-      val s2 = trim_markup (Syntax.string_of_term (Config.put Printer.show_types true ctxt) tm)
-   in if \<^try>\<open>Syntax.read_prop ctxt s2 aconv tm catch _ => false\<close> then s2
+      val pty = not (Config.get ctxt Printer.show_types)
+      val s2 = if pty
+               then trim_markup (Syntax.string_of_term (Config.put Printer.show_types true ctxt) tm)
+               else s1
+   in if pty andalso \<^try>\<open>Syntax.read_prop ctxt s2 aconv tm catch _ => false\<close> then s2
+    else let
+      val s2s = trim_markup (Syntax.string_of_term (Config.put Printer.show_sorts true ctxt) tm)
+   in if \<^try>\<open>Syntax.read_prop ctxt s2s aconv tm catch _ => false\<close> then s2s
     else let
       val s3 = String.concat (print_tm_raw' ctxt (filter tm))
    in if \<^try>\<open>Syntax.read_prop ctxt s3 aconv tm catch _ => false\<close> then s3
@@ -1493,6 +1510,7 @@ fun print_prop ctxt tm =
       in if \<^try>\<open>Syntax.read_prop ctxt s4 aconv tm catch _ => false\<close> then s4
          else raise TERM("BUG print_prop", [tm])
      end
+  end
   end
   end
   end
@@ -2598,9 +2616,10 @@ fun vars_inside ast = let
 val pad_vars_in_case = linear_pass NONE (
   fn (s0, CASE (b, (name, vs))) :: L =>
      let val ctxt = Proof.context_of (the s0)
-         val Rule_Cases.Case {fixes,...} =
+         val Rule_Cases.Case {fixes=fixes0,...} =
                 Proof_Context.check_case ctxt true (name, Position.none)
                                               (map (Option.map Binding.name) vs)
+         val fixes = filter_out (fn (B,_) => Binding.name_of B = "thesis") fixes0
          val nctxt = vars_inside L
          fun unsuffix s =
             let val i = Unsynchronized.ref (size s)
@@ -3994,10 +4013,10 @@ fun count P L = fold (fn x => fn n => n + P x) L 0
 
 fun desugar_ss00 ctxtx additional_vs (ss : structured_statement)
   : Proof_Context.statement * structured_statement =
-  let val (stmt, ctxt) = Proof_Context.read_statement (additional_vs @ #1 ss) (#2 ss) (map snd (#3 ss)) ctxtx
-      val assms' = map (map (may_print_prop ctxt))
+  let val (stmt, _) = Proof_Context.read_statement (additional_vs @ #1 ss) (#2 ss) (map snd (#3 ss)) ctxtx
+      val assms' = map (map (may_print_prop ctxtx))
                        (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#assumes stmt ~~ (#2 ss)))
-      val shows' = map (map (may_print_prop ctxt))
+      val shows' = map (map (may_print_prop ctxtx))
                        (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#shows stmt ~~ map snd (#3 ss)))
       val ss' = (#1 ss,
                  map2 (fn props => fn props' => props' ~~ map snd props) (#2 ss) assms',
@@ -4029,11 +4048,11 @@ fun desugar_considers ctxt : Element.obtains -> Element.obtains = map (desugar_c
 
 
 fun desugar_ss' ctxtx additional_vs (ss : structured_statement') : structured_statement' =
-  let val (stmt, ctxt) = Proof_Context.read_statement
+  let val (stmt, _) = Proof_Context.read_statement
                               (additional_vs @ #1 ss) (map snd (#2 ss)) (map snd (#3 ss)) ctxtx
-      val assms' = map (map (may_print_prop ctxt))
+      val assms' = map (map (may_print_prop ctxtx))
                        (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#assumes stmt ~~ map snd (#2 ss)))
-      val shows' = map (map (may_print_prop ctxt))
+      val shows' = map (map (may_print_prop ctxtx))
                        (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#shows stmt ~~ map snd (#3 ss)))
       val ss' = (#1 ss,
                  map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) (#2 ss) assms',
@@ -4042,7 +4061,7 @@ fun desugar_ss' ctxtx additional_vs (ss : structured_statement') : structured_st
   end
 
 fun desugar_at_ss ctxt vs (ass : attr_statement) : attr_statement =
-  let val (stmt, ctxt) = Proof_Context.read_statement vs [] (map snd ass) ctxt
+  let val (stmt, _) = Proof_Context.read_statement vs [] (map snd ass) ctxt
       val shows' = map (map (may_print_prop ctxt))
                        (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#shows stmt ~~ map snd ass))
    in map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) ass shows'
@@ -5179,7 +5198,8 @@ fun translate (s, toks) =
   let val s = Toplevel.command_exception false
                   (Toplevel.proof (Proof.map_context ( Config.put Printer.show_markup false
                                                     #> Config.put Goal.quick_and_dirty true
-                                                    #> Config.put show_types true ))
+                                                    #> Config.put show_types true
+                                                 (* #> Config.put show_sorts true *) ))
                                   Toplevel.empty) s
       val ps = if Toplevel.is_proof s then Toplevel.proof_of s
                                       else error "BUG Not a proof state"
@@ -5227,9 +5247,11 @@ fun translate_m targets (s, toks) =
                                 #> Config.put Goal.quick_and_dirty true
                                 #> Config.put Minilang.enable_cache_by_step false
                                 #> Config.put Phi_Sledgehammer_Solver.sledgehammer_params "timeout = 20"
-                                #> Config.put show_types true )
+                                #> Config.put show_types true
+                             (* #> Config.put show_sorts true *) )
       val ps_notyp = ps
-            |> Proof.map_context ( Config.put show_types false )
+            |> Proof.map_context ( Config.put show_types false
+                             (* #> Config.put show_sorts false *) )
       val s0 = Minilang.INIT' ps
       val ctxt0 = Proof.context_of ps
       val ctxt0_notyp = Config.put show_types false ctxt0
