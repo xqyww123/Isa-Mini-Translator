@@ -1497,6 +1497,9 @@ fun print_prop ctxt tm =
   end
   end
 
+fun may_print_prop ctxt (prop,fallback) =
+  print_prop ctxt prop
+    handle TERM _ => fallback
 
 fun print_statement (tm, [])   = print_term tm
   | print_statement (tm, pats) = print_term tm @ maps (fn pat => [" (", pat, ")"]) pats
@@ -3623,7 +3626,7 @@ fun assumes_and_fixes_of assms fixes [] = (assms, fixes)
         end
   | assumes_and_fixes_of assms fixes (_ :: L) = assumes_and_fixes_of assms fixes L
 
-fun HVC_of ctxt prev ((vs, hs, show0) : structured_statement') concl =
+fun HVC_of ctxt outter_ctxt prev ((vs, hs, show0) : structured_statement') concl =
         let val (assms0, fixes0) = assumes_and_fixes_of [] [] prev
             val (stmt, ctxt') = Proof_Context.read_statement vs (map snd hs) (map snd show0) ctxt
             val concl' = Syntax.read_prop ctxt' concl
@@ -3654,13 +3657,15 @@ fun HVC_of ctxt prev ((vs, hs, show0) : structured_statement') concl =
                          | _ => error "BUG fE67") (#fixes stmt)
                      @ fixes0
                      @ emb_vs ,
-             assms_stmt @ assms0 @ emb_asms,
+             map (apsnd (singleton (Variable.export_terms ctxt outter_ctxt)))
+                 (assms_stmt @ assms0 @ emb_asms),
              (* maps (map (pair ("",0,1))) (#assumes stmt) @ assms0, *)
-             concl'')
+             singleton (Variable.export_terms ctxt outter_ctxt) concl'')
         end
 
 fun split_proof s0 prfs =
-  let fun spl  _   _  [] = error "BUG Not ended by QED"
+  let val ctxt0 = Proof.context_of s0
+      fun spl  _   _  [] = error "BUG Not ended by QED"
         | spl buf ret [(s, QED tac)] = ((the s, tac), rev (rev buf :: ret))
         | spl buf ret ((_, NEXT)::L) = spl [] (rev buf :: ret) L
         | spl buf ret (x :: L) = spl (x::buf) ret L
@@ -3684,7 +3689,7 @@ fun split_proof s0 prfs =
            in if (length (#3 stmt) <= 1 orelse prf_duplicatable prf)
               then maps (map (fn (show_src,_) =>
                       (rev prev,
-                       HVC_of ctxt prev stmt show_src,
+                       HVC_of ctxt ctxt0 prev stmt show_src,
                        (s, replace stmt show_src),
                        prf
                       )) o snd
@@ -3692,7 +3697,7 @@ fun split_proof s0 prfs =
                  @ dup prev L
               else maps (map (fn (show_src,_) =>
                       (rev prev,
-                       HVC_of ctxt prev stmt show_src,
+                       HVC_of ctxt ctxt0 prev stmt show_src,
                        (s, replace stmt show_src),
                        [(fst (hd prf), SORRY)])
                    ) o snd) (#3 stmt)
@@ -3701,11 +3706,10 @@ fun split_proof s0 prfs =
         | dup prev (x :: L) = dup (x :: prev) L
       val blkss = maps (dup []) blks
 
-      val ctxt = Proof.context_of s0
       val goals = Thm.prems_of (#goal (Proof.goal s0))
       val (ordered_prfs', remaining_goals) =
             fold_map (fn G => fn X =>
-              let val match = match_goal (Context.Proof ctxt) G
+              let val match = match_goal (Context.Proof ctxt0) G
                in get_first_remove (fn (pre,VHC,ss,prf) =>
                       match VHC |> Option.map (K (pre, ss, NONE, prf))
                    ) X
@@ -3901,7 +3905,7 @@ val collect_fix_assms_case = elementwise_pass NONE (
           let val s = the s0
               val ctxt = Proof.context_of s
               val mG = fst (hd (snd (hd (#3 ss))))
-              val (fixes, assms, mG') = HVC_of (Proof.context_of (the sss)) pre ss mG
+              val (fixes, assms, mG') = HVC_of (Proof.context_of (the sss)) ctxt pre ss mG
               val G = Thm.prop_of (#goal (Proof.goal s))
                    |> Logic.dest_implies |> fst
 
@@ -3976,8 +3980,10 @@ fun count P L = fold (fn x => fn n => n + P x) L 0
 fun desugar_ss00 ctxtx additional_vs (ss : structured_statement)
   : Proof_Context.statement * structured_statement =
   let val (stmt, ctxt) = Proof_Context.read_statement (additional_vs @ #1 ss) (#2 ss) (map snd (#3 ss)) ctxtx
-      val assms' = map (map (print_prop ctxt)) (#assumes stmt)
-      val shows' = map (map (print_prop ctxt)) (#shows stmt)
+      val assms' = map (map (may_print_prop ctxt))
+                       (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#assumes stmt ~~ (#2 ss)))
+      val shows' = map (map (may_print_prop ctxt))
+                       (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#shows stmt ~~ map snd (#3 ss)))
       val ss' = (#1 ss,
                  map2 (fn props => fn props' => props' ~~ map snd props) (#2 ss) assms',
                  map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) (#3 ss) shows')
@@ -4010,8 +4016,10 @@ fun desugar_considers ctxt : Element.obtains -> Element.obtains = map (desugar_c
 fun desugar_ss' ctxtx additional_vs (ss : structured_statement') : structured_statement' =
   let val (stmt, ctxt) = Proof_Context.read_statement
                               (additional_vs @ #1 ss) (map snd (#2 ss)) (map snd (#3 ss)) ctxtx
-      val assms' = map (map (print_prop ctxt)) (#assumes stmt)
-      val shows' = map (map (print_prop ctxt)) (#shows stmt)
+      val assms' = map (map (may_print_prop ctxt))
+                       (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#assumes stmt ~~ map snd (#2 ss)))
+      val shows' = map (map (may_print_prop ctxt))
+                       (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#shows stmt ~~ map snd (#3 ss)))
       val ss' = (#1 ss,
                  map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) (#2 ss) assms',
                  map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) (#3 ss) shows')
@@ -4020,7 +4028,8 @@ fun desugar_ss' ctxtx additional_vs (ss : structured_statement') : structured_st
 
 fun desugar_at_ss ctxt vs (ass : attr_statement) : attr_statement =
   let val (stmt, ctxt) = Proof_Context.read_statement vs [] (map snd ass) ctxt
-      val shows' = map (map (print_prop ctxt)) (#shows stmt)
+      val shows' = map (map (may_print_prop ctxt))
+                       (map (fn (L1,L2) => (L1 ~~ map fst L2)) (#shows stmt ~~ map snd ass))
    in map2 (fn (AT, props) => fn props' => (AT, props' ~~ map snd props)) ass shows'
   end
 
@@ -5126,8 +5135,8 @@ fun translate (s, toks) =
     ; Thread_Data.put initial_state (SOME ps)
     ; parse_isar (s, toks)
    (* |> validate ps "Validation Fail: Initial Pass" (*UNNECESSARY*) *)
-   |> desugar                                        (*preserves states*)
    |> pad_vars_in_case                               (*requires and preserves states*)
+   |> desugar                                        (*preserves states*)
    |> assign_factname                                (*requires and preserves states*)
    |> pass_also_finally                              (*preserves states*)
    |> norm_assums                                    (*destroys   states*)

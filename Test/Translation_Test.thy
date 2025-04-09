@@ -187,11 +187,11 @@ apply ((linarith)[1])
 mqed 
 (*NEXT*)      
 mproof       
-case  2 
+case  2  
 show "n choose k \<le> n choose n div 2" 
 apply ((use "2" in \<open> intro binomial_antimono \<close>)[1])
 (*3 subgoals*)
-apply ((simp)[1])  
+apply ((simp)[1])   
 (*NEXT*)    
 apply ((simp)[1])  
 (*NEXT*)    
@@ -199,11 +199,11 @@ apply ((simp)[1])
 (*end 3 subgoals*)  
 .  
 mqed       
-(*NEXT*) 
+(*NEXT*)  
 apply (simp_all add : binomial_eq_0)
 (*end 3 subgoals*) 
 .    
-mqed       
+mqed      
 .                  
                            
 ML \<open>ML_Translator_Top.init_translator ["refined", "origin", "raw", "goal"] (Path.explode "/tmp/xxx")

@@ -1,0 +1,76 @@
+  using propa
+proof (cases N \<beta> S\<^sub>0 S\<^sub>1 rule: propagate.cases)
+  case (propagateI C U L C' \<gamma> C\<^sub>0 C\<^sub>1 \<Gamma> \<mu>)
+  hence S\<^sub>0_def: "S\<^sub>0 = (\<Gamma>, U, None)"
+    by simp
+
+  from conf obtain \<gamma>\<^sub>D D where
+    S\<^sub>2_def: "S\<^sub>2 = (trail_propagate \<Gamma> (L \<cdot>l \<mu>) (C\<^sub>0 \<cdot> \<mu>) \<gamma>, U, Some (D, \<gamma>\<^sub>D))" and
+    D_in: "D |\<in>| N |\<union>| U" and
+    gr_D_\<gamma>\<^sub>D: "is_ground_cls (D \<cdot> \<gamma>\<^sub>D)" and
+    tr_false_\<Gamma>_L_\<mu>: "trail_false_cls (trail_propagate \<Gamma> (L \<cdot>l \<mu>) (C\<^sub>0 \<cdot> \<mu>) \<gamma>) (D \<cdot> \<gamma>\<^sub>D)"
+    by (elim conflict.cases) (unfold propagateI(1,2), blast)
+
+  from no_conf have "\<not> trail_false_cls \<Gamma> (D \<cdot> \<gamma>\<^sub>D)"
+    using gr_D_\<gamma>\<^sub>D D_in not_trail_false_ground_cls_if_no_conflict[of N \<beta> _ D \<gamma>\<^sub>D]
+    using S\<^sub>0_def by force
+  with tr_false_\<Gamma>_L_\<mu> have "- (L \<cdot>l \<mu> \<cdot>l \<gamma>) \<in># D \<cdot> \<gamma>\<^sub>D"
+    unfolding propagate_lit_def by (metis subtrail_falseI)
+  then obtain D' L' where D_def: "D = add_mset L' D'" and 1: "L \<cdot>l \<mu> \<cdot>l \<gamma> = - (L' \<cdot>l \<gamma>\<^sub>D)"
+    by (metis Melem_subst_cls multi_member_split uminus_of_uminus_id)
+
+  define \<rho> where
+    "\<rho> = renaming_wrt {add_mset L C\<^sub>0 \<cdot> \<mu>}"
+
+  have "is_renaming \<rho>"
+    by (metis \<rho>_def finite.emptyI finite.insertI is_renaming_renaming_wrt)
+  hence "\<forall>x. is_Var (\<rho> x)" and "inj \<rho>"
+    by (simp_all add: is_renaming_iff)
+
+  have disjoint_vars: "\<And>C. vars_cls (C \<cdot> \<rho>) \<inter> vars_cls (add_mset L C\<^sub>0 \<cdot> \<mu>) = {}"
+    by (simp add: \<rho>_def vars_cls_subst_renaming_disj)
+
+  have "\<exists>\<mu>'. Unification.mgu (atm_of L' \<cdot>a \<rho>) (atm_of L \<cdot>a \<mu>) = Some \<mu>'"
+  proof (rule ex_mgu_if_subst_eq_subst_and_disj_vars)
+    have "vars_lit L' \<subseteq> subst_domain \<gamma>\<^sub>D"
+      using gr_D_\<gamma>\<^sub>D[unfolded D_def]
+      by (simp add: vars_lit_subset_subst_domain_if_grounding is_ground_cls_imp_is_ground_lit)
+    hence "atm_of L' \<cdot>a \<rho> \<cdot>a rename_subst_domain \<rho> \<gamma>\<^sub>D = atm_of L' \<cdot>a \<gamma>\<^sub>D"
+      by (rule renaming_cancels_rename_subst_domain[OF \<open>\<forall>x. is_Var (\<rho> x)\<close> \<open>inj \<rho>\<close>])
+    then show "atm_of L' \<cdot>a \<rho> \<cdot>a rename_subst_domain \<rho> \<gamma>\<^sub>D = atm_of L \<cdot>a \<mu> \<cdot>a \<gamma>"
+      using 1 by (metis atm_of_subst_lit atm_of_uminus)
+  next
+    show "vars_term (atm_of L' \<cdot>a \<rho>) \<inter> vars_term (atm_of L \<cdot>a \<mu>) = {}"
+      using disjoint_vars[of "{#L'#}"] by auto
+  qed
+  then obtain \<mu>' where imgu_\<mu>': "is_imgu \<mu>' {{atm_of L' \<cdot>a \<rho>, atm_of (L \<cdot>l \<mu>)}}"
+    using is_imgu_if_mgu_eq_Some by auto
+
+  let ?\<Gamma>prop = "trail_propagate \<Gamma> (L \<cdot>l \<mu>) (C\<^sub>0 \<cdot> \<mu>) \<gamma>"
+  let ?\<gamma>reso = "\<lambda>x. if x \<in> vars_cls (add_mset L' D' \<cdot> \<rho>) then rename_subst_domain \<rho> \<gamma>\<^sub>D x else \<gamma> x"
+
+  have "resolve N \<beta>
+    (?\<Gamma>prop, U, Some (add_mset L' D', \<gamma>\<^sub>D))
+    (?\<Gamma>prop, U, Some ((D' \<cdot> \<rho> + C\<^sub>0 \<cdot> \<mu> \<cdot> Var) \<cdot> \<mu>', ?\<gamma>reso))"
+  proof (rule resolveI[OF refl])
+    show "L \<cdot>l \<mu> \<cdot>l \<gamma> = - (L' \<cdot>l \<gamma>\<^sub>D)"
+      by (rule 1)
+  next
+    show "is_renaming \<rho>"
+      by (metis \<rho>_def finite.emptyI finite.insertI is_renaming_renaming_wrt)
+  next
+    show "vars_cls (add_mset L' D' \<cdot> \<rho>) \<inter> vars_cls (add_mset (L \<cdot>l \<mu>) (C\<^sub>0 \<cdot> \<mu>) \<cdot> Var) = {}"
+      using disjoint_vars[of "add_mset L' D'"] by simp
+  next
+    show "is_imgu \<mu>' {{atm_of L' \<cdot>a \<rho>, atm_of (L \<cdot>l \<mu>) \<cdot>a Var}}"
+      using imgu_\<mu>' by simp
+  next
+    show "is_grounding_merge ?\<gamma>reso
+     (vars_cls (add_mset L' D' \<cdot> \<rho>)) (rename_subst_domain \<rho> \<gamma>\<^sub>D)
+     (vars_cls (add_mset (L \<cdot>l \<mu>) (C\<^sub>0 \<cdot> \<mu>) \<cdot> Var)) (rename_subst_domain Var \<gamma>)"
+      using is_grounding_merge_if_mem_then_else
+      by (metis rename_subst_domain_Var_lhs)
+  qed simp_all
+  thus ?thesis
+    unfolding S\<^sub>2_def D_def by metis
+qed
