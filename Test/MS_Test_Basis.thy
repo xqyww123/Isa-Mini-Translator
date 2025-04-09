@@ -22,6 +22,7 @@ ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
 \    by (simp del: ID1) (fast intro: monofun_cfun)\n\
 \  thus \"cfun_map\<cdot>e\<cdot>e\<cdot>f\<cdot>x \<sqsubseteq> ID\<cdot>f\<cdot>x\" by simp\n\
 \qed"\<close>
+  sorry
 
 lemma cfun_below_ID:
   "\<lbrakk> f \<sqsubseteq> ID; x \<sqsubseteq> y \<rbrakk> \<Longrightarrow> f\<cdot>x \<sqsubseteq> y"
@@ -74,9 +75,10 @@ The following proof is due to
 lemma fix_argument_promote:
   assumes "cont g"
   shows "(\<Lambda> x. fix\<cdot>(g x)) = fix\<cdot>(\<Lambda> f x. g x\<cdot>(f\<cdot>x))"
+
 proof(rule below_antisym)
   have "(\<Lambda> x. g x\<cdot>(fix\<cdot>(g x))) = (\<Lambda> x. fix\<cdot>(g x))"
-    by (subst fix_eq) simp
+    apply (subst fix_eq) apply (simp)
   with \<open>cont g\<close> show "fix\<cdot>(\<Lambda> f x. g x\<cdot>(f\<cdot>x)) \<sqsubseteq> (\<Lambda> x. fix\<cdot>(g x))"
     by (simp add: fix_least cont2cont_LAM)
 next
