@@ -5235,7 +5235,7 @@ fun translate (s, toks) =
                        DOT, TACTIC, DEFINE, LET, NOTATION, HAVE, OPEN_MODULE, NOTE, MPROOF,
                        BRANCH_SUBGOALS *)
    |> validate ps "Validation Fail: separate_prf_pass"
-   |> (fn X => (warning (print_ast X); X))
+ (* |> (fn X => (warning (print_ast X); X)) *)
   end
 
 fun translate_m targets (s, toks) =
@@ -5271,8 +5271,7 @@ fun translate_m targets (s, toks) =
              |> validatem ctxt0 (Minilang.INIT' ps)
       val _ = if mast_cheat' refined
               then raise Minilang.OPR_FAIL (Minilang.PROOF_FAIL, "Some proof obligation fails")
-              else ( warning (print_mast true refined);
-                     if gen_target "refined"
+              else ( if gen_target "refined"
                      then ret := ("refined", (refined, [])) :: !ret
                      else () )
       val _ = if gen_target "untyp_refined"
@@ -5309,7 +5308,7 @@ fun translate_m targets (s, toks) =
                    catch E =>
                         err "reord_defined" E \<close>
               else NONE
-      val _ = warning (String.concatWith " " ("produce: " :: map (fst) (!ret)))
+   (* val _ = warning (String.concatWith " " ("produce: " :: map (fst) (!ret))) *)
    in !ret
   end
 
