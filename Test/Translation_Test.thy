@@ -38,7 +38,7 @@ mproof
 mqed
   . *)
 lemma \<open>(True \<or> False) \<and> (True \<and> True)\<close>
-  ML_val \<open>val _ = MinLang_Translator.translate' @{Isar.state}
+  ML_val \<open>val _ = MinLang_Translator.translate'test @{Isar.state}
     "unfolding False_def by (rule conjI, (auto; auto), rule conjI, auto)"
   \<close>
 apply ((unfold "False_def")[1])
@@ -60,7 +60,7 @@ lemma polyfun_extremal_lemma:
   assumes "0 < e"
   shows "\<exists>M. \<forall>z. M \<le> norm(z) \<longrightarrow> norm (\<Sum>i\<le>n. c(i) * z^i) \<le> e * norm(z) ^ (Suc n)"
                              
-  ML_val \<open>val _ = MinLang_Translator.translate'm @{Isar.state}
+  ML_val \<open>val _ = MinLang_Translator.translate'test @{Isar.state}
 "proof (induct n)\n\
 \  case 0 with assms\n\
 \  show ?case\n\
@@ -146,7 +146,7 @@ mqed
 
 lemma "n choose k \<le> n choose (n div 2)"
                                                     
-ML_val \<open>val _ = MinLang_Translator.translate' @{Isar.state}
+ML_val \<open>val _ = MinLang_Translator.translate'test @{Isar.state}
 "proof -\n\
     \have \"k \<le> n div 2 \<longleftrightarrow> 2*k \<le> n\" by linarith\n\
     \consider \"2*k \<le> n\" | \"2*k \<ge> n\" \"k \<le> n\" | \"k > n\" by linarith\n\
@@ -197,16 +197,16 @@ apply ((simp)[1])
 (*NEXT*)    
 apply ((simp)[1])
 (*end 3 subgoals*)   
-.   
+.    
 mqed        
 (*NEXT*)    
 apply (simp_all add : binomial_eq_0)
 (*end 3 subgoals*) 
 .     
 mqed      
-.                  
+.                   
                            
-ML \<open>ML_Translator_Top.init_translator ["untyp_refined", "untyp_raw", "refined", "origin", "raw", "goal"]
+ML \<open>ML_Translator_Top.init_translator ["refined"]
                                       (Path.explode "/tmp/xxx")
                                       (ML_Translator_Top.interactive_reporter ())\<close>
   

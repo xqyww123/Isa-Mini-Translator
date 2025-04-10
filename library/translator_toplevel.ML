@@ -165,6 +165,15 @@ fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_comman
               then ret := ("origin", (origin, [])) :: !ret
               else ()
           val _ =
+              if member (op =) targets "typed_origin"
+              then \<^try>\<open>let
+                  val ast = MinLang_Translator.anotate_types (state, prf)
+                  val str = MinLang_Translator.print_ast ast
+               in ret := ("typed_origin", (str, [])) :: !ret
+              end catch E =>
+                  ret := ("typed_origin", ("", [E])) :: !ret \<close>
+              else ()
+          val _ =
               if member (op =) targets "goal"
               then ret := ("goal", (spec, [])) :: !ret
               else ()
@@ -190,9 +199,9 @@ fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_comman
               if exists (member (op =) targets) ["refined", "raw", "reord_raw", "reord_refined",
                                                  "untyp_refined", "untyp_raw"]
               then \<^try>\<open>let
-                  val asts = MinLang_Translator.translate_m targets (state, prf)
-                  val strs = map (apsnd (apfst (MinLang_Translator.print_mast true))) asts
-                  val _ = REPL.origin_warning [origin]
+                  val asts = Unsynchronized.ref []
+                  val _ = MinLang_Translator.translate_m targets asts (state, prf)
+                  val strs = map (apsnd (apfst MinLang_Translator.print_AST)) (!asts)
                in ret := strs @ !ret
               end catch E =>
                   ret := ("refined", ("", [E])) :: !ret \<close>
@@ -285,7 +294,8 @@ fun REPL_App (cin, cout) =
       val _ = cin := cin'
 
       val KNOWN_TARGETS = ["origin", "isar-SH", "isar-SH*", "refined", "raw", "reord_raw",
-                           "reord_refined", "goal", "untyp_refined", "untyp_raw"]
+                           "reord_refined", "goal", "untyp_refined", "untyp_raw",
+                           "typed_origin", "typed_goal", "decl", "typed_decl"]
       val _ = case find_first (not o member (op =) KNOWN_TARGETS) targets
                 of SOME bad => error ("Unknown translation target: " ^ bad ^
                                 "\nAcceptable targets: " ^ String.concatWith ", " KNOWN_TARGETS)

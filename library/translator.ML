@@ -138,13 +138,20 @@ datatype mast =
              * (Minilang.state option * mast) list *)
 
 type mast' = (Minilang.state option * mast) list
+datatype AST = Isar_AST of ast' | Mini_AST of mast' | NO_AST
+type ret = (string * (AST * exn list)) list
+val print_AST : AST -> string
 
-val translate  : Toplevel.state * Token.src list -> ast'
-val translate' : Toplevel.state -> string -> ast'
+val translate  : ret Unsynchronized.ref -> Toplevel.state * Token.src list -> ast'
+val translate' : ret Unsynchronized.ref -> Toplevel.state -> string -> ast'
+
+val anotate_types  : Toplevel.state * Token.src list -> ast'
+val anotate_types' : Toplevel.state -> string -> ast'
 
 type version = string (*can be `refined`, `raw` that is not refined*)
-val translate_m  : string list -> Toplevel.state * Token.src list -> (string * (mast' * exn list)) list
-val translate'm  : Toplevel.state -> string -> (string * (mast' * exn list)) list
+val translate_m  : string list -> ret Unsynchronized.ref -> Toplevel.state * Token.src list -> unit
+val translate'm  : string list -> ret Unsynchronized.ref -> Toplevel.state -> string -> unit
+val translate'test : Toplevel.state -> string -> unit
 
 val print_ast  :  ast' -> string
 val print_mast : bool (*prints response*) -> mast' -> string
@@ -3777,8 +3784,7 @@ fun split_proof s0 prfs =
    in result @ [(NONE, DOT)]
   end
 
-val split_proof_pass = norm_prf1
-  #> linear_pass NONE (
+val split_proof_pass = linear_pass NONE (
   fn (s, PROOF (_, body)) :: L => split_proof (the s) body @ L
    | L => L
 )
@@ -5194,12 +5200,34 @@ val reprint_pass = linear_passm NONE (
 
 (*** Toplevel ***)
 
-fun translate (s, toks) =
+fun anotate_types (s, toks) =
   let val s = Toplevel.command_exception false
                   (Toplevel.proof (Proof.map_context ( Config.put Printer.show_markup false
                                                     #> Config.put Goal.quick_and_dirty true
-                                                    #> Config.put show_types true
-                                                 (* #> Config.put show_sorts true *) ))
+                                                    #> Config.put show_types true ))
+                                  Toplevel.empty) s
+      val ps = if Toplevel.is_proof s then Toplevel.proof_of s
+                                      else error "BUG Not a proof state"
+   in Thread_Data.put counter_store NONE
+    ; Thread_Data.put initial_state (SOME ps)
+    ; parse_isar (s, toks)
+   (* |> validate ps "Validation Fail: Initial Pass" (*UNNECESSARY*) *)
+   |> pad_vars_in_case                               (*requires and preserves states*)
+   |> desugar                                        (*preserves states*)
+  end
+
+datatype AST = Isar_AST of ast' | Mini_AST of mast' | NO_AST
+type ret = (string * (AST * exn list)) list
+
+fun print_AST (Isar_AST ast) = print_ast ast
+  | print_AST (Mini_AST ast) = print_mast true ast
+  | print_AST NO_AST = ""
+
+fun translate ret (s, toks) =
+  let val s = Toplevel.command_exception false
+                  (Toplevel.proof (Proof.map_context ( Config.put Printer.show_markup false
+                                                    #> Config.put Goal.quick_and_dirty true
+                                                    #> Config.put show_types true ))
                                   Toplevel.empty) s
       val ps = if Toplevel.is_proof s then Toplevel.proof_of s
                                       else error "BUG Not a proof state"
@@ -5213,13 +5241,18 @@ fun translate (s, toks) =
    |> pass_also_finally                              (*preserves states*)
    |> norm_assums                                    (*destroys   states*)
    |> validate ps "Validation Fail: assign_factname" (*NECESSARY*)
+   |> (fn X => (ret := ("before_elim_this_connectives", (Isar_AST X, [])) :: !ret; X))
    |> resolve_this                                   (*preserves states*)
    |> norm_FROM_WITH_USING                           (*preserves states*)
+   |> (fn X => (ret := ("after_elim_this_connectives", (Isar_AST X, [])) :: !ret; X))
    |> replace_fact_expr'                             (*preserves states*)
    |> rewrite_subgoal
    (* |> validate ps "Validation Fail: norm_FROM_WITH_USING" (*UNNECESSARY*) *)
    |> pass_consider                                  (*preserves states*)
+   |> norm_prf1
+   |> (fn X => (ret := ("before_split_proof", (Isar_AST X, [])) :: !ret; X))
    |> split_proof_pass                               (*restructure, messes up states of PROOF*)
+   |> (fn X => (ret := ("after_split_proof", (Isar_AST X, [])) :: !ret; X))
    |> move_assms                                     (*destroys states, requires no states*)
    |> validate ps "Validation Fail: split_proof_pass" (*NECESSARY*)
    |> replace_case_tac                               (*preserves states*)
@@ -5238,7 +5271,7 @@ fun translate (s, toks) =
  (* |> (fn X => (warning (print_ast X); X)) *)
   end
 
-fun translate_m targets (s, toks) =
+fun translate_m targets ret (s, toks) =
   let val gen_target = member (op =) targets
       val ps = if Toplevel.is_proof s then Toplevel.proof_of s
                                       else error "BUG Not a proof state"
@@ -5255,12 +5288,11 @@ fun translate_m targets (s, toks) =
       val s0 = Minilang.INIT' ps
       val ctxt0 = Proof.context_of ps
       val ctxt0_notyp = Config.put show_types false ctxt0
-      val ret = Unsynchronized.ref []
       val _ = Minilang.set_reporter item_reporter
       fun report cat rep =
-            if mast_cheat' rep then rep else (ret := (cat, (rep, [])) :: !ret ; rep)
-      fun err cat E = (ret := (cat, ([], [E])) :: !ret; NONE)
-      val raw = trans_to_minlang (translate (s, toks)) s0 |> fst
+            if mast_cheat' rep then rep else (ret := (cat, (Mini_AST rep, [])) :: !ret ; rep)
+      fun err cat E = (ret := (cat, (NO_AST, [E])) :: !ret; NONE)
+      val raw = trans_to_minlang (translate ret (s, toks)) s0 |> fst
              |> norm_Mtac                            (*destroys state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
              |> gen_target "raw" ? report "raw"
@@ -5272,7 +5304,7 @@ fun translate_m targets (s, toks) =
       val _ = if mast_cheat' refined
               then raise Minilang.OPR_FAIL (Minilang.PROOF_FAIL, "Some proof obligation fails")
               else ( if gen_target "refined"
-                     then ret := ("refined", (refined, [])) :: !ret
+                     then ret := ("refined", (Mini_AST refined, [])) :: !ret
                      else () )
       val _ = if gen_target "untyp_refined"
               then \<^try>\<open> refined
@@ -5309,7 +5341,7 @@ fun translate_m targets (s, toks) =
                         err "reord_defined" E \<close>
               else NONE
    (* val _ = warning (String.concatWith " " ("produce: " :: map (fst) (!ret))) *)
-   in !ret
+   in ()
   end
 
 fun parse state src =
@@ -5327,8 +5359,10 @@ fun parse state src =
    in (state, toks)
   end
 
-fun translate'  state src = translate   (parse state src)
-fun translate'm state src = translate_m ["refined", "raw"] (parse state src)
+fun anotate_types'  state src = anotate_types (parse state src)
+fun translate'  ret state src = translate ret (parse state src)
+fun translate'm targets ret state src = translate_m targets ret (parse state src)
+fun translate'test state src = translate'm ["refined", "raw"] (Unsynchronized.ref []) state src
 
 end
 
