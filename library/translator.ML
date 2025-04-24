@@ -1531,7 +1531,7 @@ fun may_print_prop ctxt (prop,fallback) =
     handle TERM _ => fallback
 
 fun print_statement (tm, [])   = print_term tm
-  | print_statement (tm, pats) = print_term tm @ maps (fn pat => [" (", pat, ")"]) pats
+  | print_statement (tm, pats) = print_term tm @ maps (fn pat => " (" :: print_term pat @ [")"]) pats
 val print_statements = implode_with " " o map print_statement
 val print_attr_statements = implode_with " and " o
       map (fn (B,tms) => print_attrbind' B @ print_statements tms)
