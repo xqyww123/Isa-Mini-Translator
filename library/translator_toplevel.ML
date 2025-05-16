@@ -241,7 +241,8 @@ fun translate_file path =
                       file = SOME path,
                       position_label = NONE,
                       additional_libs = [] (*["Minilang.Minilang_Base"]*),
-                      import_dir = NONE }
+                      import_dir = NONE,
+                      single_cmd_timeout = NONE }
                     src )
    finally REPL.reset_base_dir () \<close>
   end

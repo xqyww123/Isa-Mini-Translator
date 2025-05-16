@@ -5237,8 +5237,10 @@ fun translate ret (s, toks) =
    (* |> validate ps "Validation Fail: Initial Pass" (*UNNECESSARY*) *)
    |> pad_vars_in_case                               (*requires and preserves states*)
    |> desugar                                        (*preserves states*)
+   |> (fn X => (ret := ("after_desugar", (Isar_AST X, [])) :: !ret; X))
    |> assign_factname                                (*requires and preserves states*)
    |> pass_also_finally                              (*preserves states*)
+   |> (fn X => (ret := ("before_norm_assums", (Isar_AST X, [])) :: !ret; X))
    |> norm_assums                                    (*destroys   states*)
    |> validate ps "Validation Fail: assign_factname" (*NECESSARY*)
    |> (fn X => (ret := ("before_elim_this_connectives", (Isar_AST X, [])) :: !ret; X))
@@ -5259,6 +5261,7 @@ fun translate ret (s, toks) =
    |> pass_goal_cases                                (*destroys states, requires states of MPROOF*)
    |> collect_fix_assms_case                         (*preserves states*)
    |> translating_bracket                            (*restructure, messes up states of BRCBLK*)
+   |> (fn X => (ret := ("before_sep_tactic", (Isar_AST X, [])) :: !ret; X))
    |> separate_prf_pass
    |> reduce_MPROOFs
       (*any tactic is applied only to the leading subgoal, in form `apply((tac)[1])`*)
@@ -5267,7 +5270,8 @@ fun translate ret (s, toks) =
         are eliminated, leaving FIX, ASSUME, CASE, ISAR_OBTAIN, ISAR_CONSIDER,
                        DOT, TACTIC, DEFINE, LET, NOTATION, HAVE, OPEN_MODULE, NOTE, MPROOF,
                        BRANCH_SUBGOALS *)
-   |> validate ps "Validation Fail: separate_prf_pass"
+   |> validate ps "Validation Fail: final pass"
+   |> (fn X => (ret := ("final_isar_pass", (Isar_AST X, [])) :: !ret; X))
  (* |> (fn X => (warning (print_ast X); X)) *)
   end
 
