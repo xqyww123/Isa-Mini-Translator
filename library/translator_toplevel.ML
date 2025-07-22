@@ -13,7 +13,7 @@ val interactive_reporter : unit -> reporter
 (*val socket_reporter : BinIO.StreamIO.instream * BinIO.StreamIO.outstream
                    -> reporter*)
 
-val init_translator : string list (*targets*) -> Path.T -> reporter -> unit
+val init_translator : string list (*targets*) -> reporter -> unit
 val translate_src   : REPL.cfg -> string -> unit
 val translate_file  : string (*path*) -> unit
 
@@ -217,14 +217,14 @@ fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_comman
 
 end
 
-fun init_translator targets base_dir_of_theories reporter = (
-      REPL.init_repler base_dir_of_theories NONE
+fun init_translator targets reporter = (
+      REPL.init_repler NONE
     ; REPL.set_register_thy false
     ; REPL.register_plugin ("MinLang.Translator", REPL_plugin targets reporter)
     ; REPL.add_evaluated_theories ("Minilang.Minilang_Base", \<^theory>\<open>Minilang_Base\<close>) )
 
 fun translate_src cfg src =
-  let val errs = REPL.collect_erros (REPL.RE cfg src) []
+  let val errs = REPL.collect_erros (REPL.RE cfg src)
    in if null errs
     then ()
     else raise Bad_Source (String.concatWith "\n" errs)
@@ -235,16 +235,16 @@ fun translate_file path =
       val thy_qualifier = the_default "HOL" (REPL_Aux.parse_session_name path')
       val src = File.read path'
       val dir = Path.dir path'
-   in \<^try>\<open> (
-      REPL.set_base_dir dir
-    ; translate_src { thy_qualifier = thy_qualifier,
+   in translate_src { thy_qualifier = thy_qualifier,
                       file = SOME path,
                       position_label = NONE,
                       additional_libs = [] (*["Minilang.Minilang_Base"]*),
                       import_dir = NONE,
-                      single_cmd_timeout = NONE }
-                    src )
-   finally REPL.reset_base_dir () \<close>
+                      single_cmd_timeout = NONE,
+                      attributes = [],
+                      base_dir = dir,
+                      write_thy = false }
+                    src
   end
 
 
@@ -261,10 +261,11 @@ fun thy_packer {name, imports, ...} =
    in packPair (packString, packList packString) (fst name, map fst imports)
   end
 
-fun socket_reporter (cin,cout) =
+fun socket_reporter pos_tr (cin,cout) =
   let open MessagePackBinIO.Unpack MessagePackBinIO.Pack
       val packError  = packString o Minilang_Aux.trim_markup o String.concat o Runtime.exn_message_list
       val packErrors = packList packError
+      val pos_packer = pos_packer o pos_tr
    in { start = (fn pos =>
           let val _ = doPack (packPair (packInt, pos_packer)) (0, pos) cout 
               val _ = BinIO.StreamIO.flushOut cout
@@ -301,7 +302,11 @@ fun REPL_App (cin, cout) =
                 of SOME bad => error ("Unknown translation target: " ^ bad ^
                                 "\nAcceptable targets: " ^ String.concatWith ", " KNOWN_TARGETS)
                  | NONE => ()
-      val reporter = socket_reporter (cin,cout)
+
+      val src = File.read (Path.explode path)
+      val (_, tr) = REPL_Aux.column_of_pos src
+
+      val reporter = socket_reporter tr (cin,cout)
 
    in REPL.register_plugin ("MinLang.Translator", REPL_plugin targets reporter)
     ; \<^try>\<open>
