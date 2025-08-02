@@ -5285,9 +5285,11 @@ fun translate_m targets ret (s, toks) =
                                 #> Config.put Minilang.enable_cache_by_step false
                                 #> Config.put Phi_Sledgehammer_Solver.sledgehammer_params "timeout = 20"
                                 #> Config.put show_types true
+                                #> Config.put show_types_nv true
                              (* #> Config.put show_sorts true *) )
       val ps_notyp = ps
             |> Proof.map_context ( Config.put show_types false
+                                #> Config.put show_types_nv false
                              (* #> Config.put show_sorts false *) )
       val s0 = Minilang.INIT' ps
       val ctxt0 = Proof.context_of ps
@@ -5366,7 +5368,20 @@ fun parse state src =
 fun anotate_types'  state src = anotate_types (parse state src)
 fun translate'  ret state src = translate ret (parse state src)
 fun translate'm targets ret state src = translate_m targets ret (parse state src)
-fun translate'test state src = translate'm ["refined", "raw"] (Unsynchronized.ref []) state src
+fun translate'test state src =
+  let val output = Unsynchronized.ref []
+   in translate'm ["refined", "raw"] output state src
+    ; app (let open Pretty in
+        fn (name, (NO_AST, fails)) =>
+            warning (string_of (chunks (
+              str (name ^ " fails: ") ::
+              map (item o single o Runtime.pretty_exn) fails
+            ) ))
+          | (name, (ast, _)) =>
+            Output.writeln (name ^ ":\n" ^ print_AST ast)
+        end ) (!output)
+    ; ()
+  end
 
 end
 

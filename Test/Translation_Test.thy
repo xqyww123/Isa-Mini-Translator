@@ -3,11 +3,49 @@ theory Translation_Test
           "../MS_Translator_Top" HOL.Transcendental HOL.Groups_Big
 begin
 
-
+  
 declare [[ML_debugger, ML_exception_debugger, ML_exception_trace]]
 
 declare [[ML_print_depth = 100]]
- 
+
+
+lemma 
+  fixes AAA BBB
+  assumes A: \<open>AAA\<close> 
+  shows \<open>AAA\<close>
+
+  sorry
+
+lemma "AAA" if A: AAA
+  ML_val \<open>
+let val ctxt = \<^context>
+    val facts = Proof_Context.facts_of ctxt;
+    val props = map #1 (Facts.props facts)
+    val target = Local_Theory.target_of ctxt
+    fun steal ctxt =
+          let val lv = Local_Theory.level ctxt
+              val ret = Unsynchronized.ref NONE
+           in Local_Theory.map_contexts (fn i => fn X =>
+                ((if i = lv - 1 then ret := SOME X else () ); X)) ctxt
+            ; case !ret
+                of SOME ret => ret
+                 | NONE => error "BUG: REPL.get_context.steal"
+          end
+    val facts' = if can Local_Theory.assert ctxt
+             then Proof_Context.facts_of (steal ctxt)
+             else Global_Theory.facts_of (Proof_Context.theory_of ctxt)
+    val local_facts2 = 
+      (if null props then [] else [("<unnamed>", props)]) @
+      Facts.dest_static false [facts'] facts;
+  in
+local_facts2
+end
+\<close>
+ML_val \<open> MinLang_Translator.translate'test @{Isar.state}
+    "by (auto simp add: assms)"
+  \<close>
+  by (auto simp add: assms)
+
 term 1
 
 (*
