@@ -221,7 +221,7 @@ fun init_translator targets reporter = (
       REPL.init_repler NONE
     ; REPL.set_register_thy false
     ; REPL.register_plugin ("MinLang.Translator", REPL_plugin targets reporter)
-    ; REPL.add_evaluated_theories ("Minilang.Minilang_Base", \<^theory>\<open>Minilang_Base\<close>) )
+    (* ; REPL.add_evaluated_theories ("Minilang.Minilang_Base", \<^theory>\<open>Minilang_Base\<close>) *) )
 
 fun translate_src cfg src =
   let val errs = REPL.collect_erros (REPL.RE cfg src)
