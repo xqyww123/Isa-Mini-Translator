@@ -196,6 +196,15 @@ fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_comman
                     ret := ("isar-SH*", ("", [E])) :: !ret\<close>
               else ()
           val _ =
+              if member (op =) targets "pure-SH*"
+              then \<^try>\<open>
+                let val thor = Thor.translate_SH true state prf_spans
+                 in ret := ("pure-SH*", (thor, [])) :: !ret
+                end 
+                catch E =>
+                    ret := ("pure-SH*", ("", [E])) :: !ret\<close>
+              else ()
+          val _ =
               if exists (member (op =) targets) ["refined", "raw", "reord_raw", "reord_refined",
                                                  "untyp_refined", "untyp_raw"]
               then \<^try>\<open>let
@@ -297,7 +306,8 @@ fun REPL_App (cin, cout) =
 
       val KNOWN_TARGETS = ["origin", "isar-SH", "isar-SH*", "refined", "raw", "reord_raw",
                            "reord_refined", "goal", "untyp_refined", "untyp_raw",
-                           "typed_origin", "typed_goal", "decl", "typed_decl", "after_desugar"]
+                           "typed_origin", "typed_goal", "decl", "typed_decl", "after_desugar",
+                           "pure-SH*"]
       val _ = case find_first (not o member (op =) KNOWN_TARGETS) targets
                 of SOME bad => error ("Unknown translation target: " ^ bad ^
                                 "\nAcceptable targets: " ^ String.concatWith ", " KNOWN_TARGETS)

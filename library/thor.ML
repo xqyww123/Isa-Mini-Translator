@@ -3,6 +3,9 @@ signature THOR = sig
 val translate_thor : bool -> Toplevel.state -> (Toplevel.transition * Command_Span.span) list -> string
 val translate_thor_src : bool -> Toplevel.state -> string -> string
 
+val translate_SH : bool -> Toplevel.state -> (Toplevel.transition * Command_Span.span) list -> string
+val translate_SH_src : bool -> Toplevel.state -> string -> string
+
 end
 
 structure Thor : THOR = struct
@@ -104,6 +107,47 @@ fun print_case_newthings (Command_Span.Span (Command_Span.Command_Span (name, _)
       else []
   | print_case_newthings _ _ = []
 
+fun translate_SH improved stat commands =
+   let val ctxt = Toplevel.context_of stat
+       val sequent = #goal (Proof.goal (Toplevel.proof_of stat))
+  
+       val override =
+          if improved
+          then let
+               val origin_prf = extract_proof commands
+                             |> map ( filter Token.is_proper
+                                    o Command_Span.content o snd)
+               val origin_ast = try MinLang_Translator.parse_isar (stat, origin_prf)
+                             |> the_default []
+               val (w,wo) = MinLang_Translator.collect_facts origin_ast
+            in { add = w, del = wo, only = false }
+           end
+          else Sledgehammer_Fact.no_fact_override
+       val sequent_opt' = try (
+                  Phi_Sledgehammer_Solver.all_auto improved override NONE ctxt) sequent
+    in case sequent_opt'
+    of SOME (SH_prf, _) => let
+             val (w,wo) = MinLang_Translator.facts_in_SH_return SH_prf
+             val sh_str =
+                  if improved
+                  then let
+                       val add = (if null w  then [] else [" add: "])
+                               @ print_facts w
+                       val del = (if null wo then [] else [" del: "])
+                               @ print_facts (#del override)
+                       val code = String.concat (
+                                     "by (auto_sledgehammer"
+                                  :: add
+                                   @ del
+                                   @ [")"])
+                    in code
+                   end
+                  else snd raw_SH_str
+          in sh_str
+         end
+     | NONE => error "translate_SH fails"
+   end
+
 fun translate_thor improved stat commands =
   let fun translate _ [] = []
         | translate stat (all_commands as (tr, span) :: commands) =
@@ -191,5 +235,9 @@ fun translate_thor_src improved state src =
    in translate_thor improved state cmds
   end
 
+fun translate_SH_src improved state src =
+  let val (state, cmds) = parse state src
+   in translate_SH improved state cmds
+  end
 
 end
