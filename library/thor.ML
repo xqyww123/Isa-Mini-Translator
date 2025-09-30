@@ -131,15 +131,11 @@ fun translate_SH improved stat commands =
              val sh_str =
                   if improved
                   then let
-                       val add = (if null w  then [] else [" add: "])
+                       val add = (if null w  then [] else [" WITH "])
                                @ print_facts w
-                       val del = (if null wo then [] else [" del: "])
+                       val del = (if null wo then [] else [" WITHOUT "])
                                @ print_facts (#del override)
-                       val code = String.concat (
-                                     "by (auto_sledgehammer"
-                                  :: add
-                                   @ del
-                                   @ [")"])
+                       val code = String.concat ("END" :: add @ del)
                     in code
                    end
                   else snd raw_SH_str
