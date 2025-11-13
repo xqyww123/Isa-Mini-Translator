@@ -229,7 +229,7 @@ val simp_modifiers0 =
             || (($$$ "elim" -- dqbo -- colon) >> K ( pair []))
             || (($$$ "intro" -- aqbo -- colon) >> K (rpair []))
             || (($$$ "intro" -- dqbo -- colon) >> K ( pair []))
-            || (($$$ "flip" -- colon) >> K (fn thms =>
+            || ((Scan.option ($$$ simpN) |-- $$$ "flip" -- colon) >> K (fn thms =>
                 let fun ist (rf, atts) = (rf, atts @ [[tok_symmetric]])
                  in (map ist thms, thms)
                 end ))
