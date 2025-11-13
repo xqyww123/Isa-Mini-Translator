@@ -19,6 +19,8 @@ val translate_file  : string (*path*) -> unit
 
 val REPL_App : REPL_Server.App
 
+val pos_packer : Position.T MessagePackBinIO.Pack.packer
+
 end
 
 structure ML_Translator_Top : ML_TRANSLATOR_TOP = struct
@@ -299,7 +301,7 @@ fun socket_reporter pos_tr (cin,cout) =
       }
   end
 
-fun REPL_App (cin, cout) =
+fun REPL_App (cin, cout, toplevel) =
   let open MessagePackBinIO.Unpack MessagePackBinIO.Pack
       val ((path, targets), cin') = doUnpack (unpackPair (unpackString, unpackList unpackString)) (!cin)
       val _ = cin := cin'
@@ -324,6 +326,7 @@ fun REPL_App (cin, cout) =
       catch E => #error reporter E\<close>
     ; doPack packInt 3 cout
     ; BinIO.StreamIO.flushOut cout
+    ; toplevel
   end
 
 end

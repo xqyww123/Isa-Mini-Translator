@@ -82,7 +82,7 @@ next
   then show "prefix xs (ys @ [y])"
     by auto (metis append.assoc prefix_def) 
 qed
-
+ 
 lemma Cons_prefix_Cons [simp]: "prefix (x # xs) (y # ys) = (x = y \<and> prefix xs ys)"
   by (auto simp add: prefix_def)
 

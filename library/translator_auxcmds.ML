@@ -1,4 +1,16 @@
-structure MinLang_Translator = struct
+signature ML_TRANSLATOR = sig
+  val mproof: Proof.state -> Proof.state
+  val mqed: Proof.state -> Proof.state
+
+  val mproof_transition : Toplevel.transition -> Toplevel.transition
+  val mqed_transition : Toplevel.transition -> Toplevel.transition
+
+  val setup_msorry : local_theory -> local_theory
+  val setup_msorry': theory -> theory
+
+end
+
+structure MinLang_Translator : ML_TRANSLATOR = struct
 
 structure MProof_Data = Proof_Data (
   type T = Proof.state list
@@ -67,13 +79,28 @@ fun mproof s0 = let
       (* |> (fn s => Proof.map_context (MProof_Data.map (fn L => s :: L)) s) *)
    end
 
+val mproof_transition = Toplevel.proof mproof
+val mqed_transition = Toplevel.proof mqed
+
 val _ =
   Outer_Syntax.command \<^command_keyword>\<open>mproof\<close> "backward proof step"
-    (Scan.succeed (Toplevel.proof mproof))
+    (Scan.succeed mproof_transition)
 
 val _ =
   Outer_Syntax.command \<^command_keyword>\<open>mqed\<close> "conclude proof"
-    (Scan.succeed (Toplevel.proof mqed))
+    (Scan.succeed mqed_transition)
+
+val setup_msorry =
+  Method.local_setup \<^binding>\<open>msorry\<close> (
+    Scan.succeed (fn _ =>
+      CONTEXT_METHOD (fn _ => fn (ctxt, st) =>
+        TACTIC_CONTEXT ctxt (ALLGOALS (Skip_Proof.cheat_tac ctxt) st)))) ""
+
+val setup_msorry' =
+  Method.setup \<^binding>\<open>msorry\<close> (
+    Scan.succeed (fn _ =>
+      CONTEXT_METHOD (fn _ => fn (ctxt, st) =>
+        TACTIC_CONTEXT ctxt (ALLGOALS (Skip_Proof.cheat_tac ctxt) st)))) ""
 
 
 end

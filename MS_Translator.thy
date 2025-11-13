@@ -4,6 +4,8 @@ theory MS_Translator
        and "mqed"   :: qed_block % "proof"
 begin
 
+(* declare [[ML_debugger]] *)
+
 method_setup msorry = \<open>
   Scan.succeed (fn _ =>
     CONTEXT_METHOD (fn _ => fn (ctxt, st) =>

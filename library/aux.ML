@@ -1,11 +1,13 @@
 signature MINILANG_AUX = sig
 include MINILANG_AUX
 
-val is_tactic : (Toplevel.transition * Command_Span.span) list -> bool
+val begin_with_tactic : (Toplevel.transition * Command_Span.span) list -> bool
 val remove_tactic : (Toplevel.transition * Command_Span.span) list
                  -> (Toplevel.transition * Command_Span.span) list
 val extract_proof : (Toplevel.transition * Command_Span.span) list
                  -> (Toplevel.transition * Command_Span.span) list
+val extract_tactic : (Toplevel.transition * Command_Span.span) list
+                  -> (Toplevel.transition * Command_Span.span) list
 
 exception Translation_Fail of string
 exception Unsupported of string
@@ -49,7 +51,8 @@ open Minilang_Aux
 exception Translation_Fail of string
 exception Unsupported of string
 
-val is_tactic =
+(*Check whether the prefix of the given command sequence is tactics*)
+val begin_with_tactic =
   let datatype ele = FWD | BWD
       fun pop _ [] = raise Unsupported "Malformed Source"
         | pop k (k'::SK) = if k = k' then SK else raise Unsupported "Malformed Source"
@@ -66,6 +69,8 @@ val is_tactic =
                   | "obtain"    => false
                   | "interpret" => false
                   | "subgoal"   => false
+                  | "mproof"    => false
+                  | "mqed"      => false
                   | "by"    => pass (pop BWD stack) L
                   | "done"  => pass (pop BWD stack) L
                   | "apply_end" => pass (pop BWD stack) L
@@ -104,6 +109,34 @@ val remove_tactic =
               )
         | pass _ X = raise Translation_Fail "Malformed Source"
    in pass [BWD]
+  end
+
+val extract_tactic =
+  let datatype ele = FWD | BWD
+      fun pop _ [] = raise Unsupported "Malformed Source"
+        | pop k (k'::SK) = if k = k' then SK else raise Unsupported "Malformed Source"
+      fun pass [] ret _ = rev ret
+        | pass stack ret ((ele as (_, Command_Span.Span (Command_Span.Command_Span (name, _), _))) :: L)
+            = (case name
+                 of "proof" => pass (FWD :: stack) (ele :: ret) L
+                  | "qed"   => pass (stack |> pop FWD |> pop BWD) (ele :: ret) L
+                  | "have"  => pass (BWD :: stack) (ele :: ret) L
+                  | "show"  => pass (BWD :: stack) (ele :: ret) L
+                  | "hence" => pass (BWD :: stack) (ele :: ret) L
+                  | "thus"  => pass (BWD :: stack) (ele :: ret) L
+                  | "consider"  => pass (BWD :: stack) (ele :: ret) L
+                  | "obtain"    => pass (BWD :: stack) (ele :: ret) L
+                  | "interpret" => pass (BWD :: stack) (ele :: ret) L
+                  | "subgoal"   => pass (BWD :: stack) (ele :: ret) L
+                  | "by"    => pass (pop BWD stack) (ele :: ret) L
+                  | "done"  => pass (pop BWD stack) (ele :: ret) L
+                  | "apply_end" => pass (pop BWD stack) (ele :: ret) L
+                  | "."     => pass (pop BWD stack) (ele :: ret) L
+                  | ".."    => pass (pop BWD stack) (ele :: ret) L
+                  |  _      => pass stack (ele :: ret) L
+              )
+        | pass _ _ _  = raise Translation_Fail "Malformed Source"
+   in pass [BWD] []
   end
 
 val extract_proof =

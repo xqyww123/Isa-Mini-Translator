@@ -1,4 +1,5 @@
 signature ML_TRANSLATOR = sig
+include ML_TRANSLATOR
 
 type source = string
 type typ'  = source
@@ -142,7 +143,7 @@ datatype AST = Isar_AST of ast' | Mini_AST of mast' | NO_AST
 type ret = (string * (AST * exn list)) list
 val print_AST : AST -> string
 
-val translate  : ret Unsynchronized.ref -> Toplevel.state * Token.src list -> ast'
+val elaborate  : ret Unsynchronized.ref -> Toplevel.state * Token.src list -> ast'
 val translate' : ret Unsynchronized.ref -> Toplevel.state -> string -> ast'
 
 val anotate_types  : Toplevel.state * Token.src list -> ast'
@@ -157,12 +158,14 @@ val print_ast  :  ast' -> string
 val print_mast : bool (*prints response*) -> mast' -> string
 
 val parse_isar : Toplevel.state * Token.src list -> ast'
+val parse_isar_no_state : Token.src list -> ast'
 val collect_facts : ast' -> (Facts.ref * Token.src list) list (*using*)
                           * (Facts.ref * Token.src list) list (*not using*)
 val facts_in_SH_return : string -> (Facts.ref * Token.src list) list (*using*)
                                  * (Facts.ref * Token.src list) list (*not using*)
 
-val case_parser : Proof.state -> (Proof.state * ast) parser
+val case_parser : ast parser
+val msorry_printing : string Unsynchronized.ref
 
 end
 
@@ -1404,6 +1407,8 @@ fun collect_mfacts ast = let
 
 (* fun print_toks toks = String.concatWith " " (map Token.unparse toks) *)
 
+val msorry_printing = Unsynchronized.ref "msorry"
+
 fun print_method (Method.Source toks) = print_toks toks
   | print_method (Method.Combinator (_, Method.Then, tacs))
       = implode_with ", " (map print_method tacs)
@@ -1419,7 +1424,7 @@ fun print_method (Method.Source toks) = print_toks toks
       = ["("] @ print_method x1 @ [")[", string_of_int i, "]"]
   | print_method (m as Method.Basic _) =
       if pointer_eq (m, method_sorry)
-      then ["msorry"]
+      then [!msorry_printing]
       else error "BUG Fail to print internal methods"
   | print_method (Method.Combinator _) = error "BUG Bad method combinator"
 
@@ -1754,19 +1759,19 @@ val if_statement' = Scan.optional (
 val if_statement = Scan.optional (
         (Parse.$$$ "if" || Parse.$$$ "when") |-- Parse.!!! Parse_Spec.statement) [];
 
-fun structured_statement F state =
+fun structured_statement F =
   Parse_Spec.statement -- if_statement' -- Parse.for_fixes
-    >> (fn ((shows, assumes), fixes) => (state, F (fixes, assumes, shows) ))
+    >> (fn ((shows, assumes), fixes) => F (fixes, assumes, shows) )
 
-fun structured_statement' F state =
+fun structured_statement' F =
   Parse_Spec.statement -- if_statement  -- Parse.for_fixes
-    >> (fn ((shows, assumes), fixes) => (state, F (fixes, assumes, shows) ))
+    >> (fn ((shows, assumes), fixes) => F (fixes, assumes, shows) )
 
 exception IGNORE
-fun ignore _ _ = raise IGNORE
+fun ignore _ = raise IGNORE
 
-fun TODO name _ _ = raise Unsupported name
-fun BAD_SOURCE _ _ = raise Bad_Source ""
+fun TODO name _ = raise Unsupported name
+fun BAD_SOURCE _ = raise Bad_Source ""
 
 val standard_tac = Method.Source [mk_idt "standard"]
 val no_tac = Method.Source [mk_idt "-"]
@@ -1775,54 +1780,48 @@ local
 
 val text_range = Option.map (rpair Position.no_range)
 
-fun facts  F state = Parse.and_list1 Parse.thms1 >> (pair state o F)
-fun facts' F state = Scan.optional (Parse.and_list1 Parse.thms1) [] >> (pair state o F)
+fun facts  F = Parse.and_list1 Parse.thms1 >> F
+fun facts' F = Scan.optional (Parse.and_list1 Parse.thms1) [] >> F
 
-fun tactic_parser F state = Method.parse >> (pair state o F o fst)
+fun tactic_parser F = Method.parse >> (F o fst)
 (* fun tactic_parser2 state = Method.parse -- Scan.option Method.parse
                        >> (fn ((t1,_), SOME (t2,_)) => pair state (TACTIC (
                                    Method.Combinator (Method.no_combinator_info,
                                                       Method.Then,
                                                       [t1,t2])))
                             | ((t1,_), NONE) => pair state (TACTIC t1) ) *)
-fun qed_parser state = Scan.option (Method.parse >> fst) >> (pair state o QED o rpair NONE)
-fun proof_parser state =
-        Scan.optional (Method.parse >> fst) standard_tac
-    >> (pair state o PROOF o rpair [])
+val qed_parser = Scan.option (Method.parse >> fst) >> (QED o rpair NONE)
+val proof_parser =
+        Scan.optional (Method.parse >> fst) standard_tac >> (PROOF o rpair [])
 
-fun fix_parser state = VARS >> (pair state o FIX)
+val fix_parser = VARS >> FIX
 val assume_parser = structured_statement ASSUME
 val unfold_parser = facts (UNFOLD o flat)
 val using_parser  = facts (USING  o flat)
 
 (*TODO*)
-fun case_parser   state = (
+val case_parser = (
         Parse_Spec.opt_thm_name ":" --
       ( \<^keyword>\<open>(\<close> |-- Parse.!!! (Parse.name
                     -- Scan.repeat (Parse.maybe Parse.name) --| \<^keyword>\<open>)\<close>)
      || Parse.name >> rpair []))
-      >> (pair state o CASE)
+      >> CASE
 val restore_case = apsnd ( apfst (rpair Position.none)
                         #> apsnd (map (Option.map Binding.name)))
 
-fun define_parser state = (Parse.vars --| Parse.where_) -- Parse_Spec.statement -- Parse.for_fixes
-      >> (fn ((a,b),c) => (state, DEFINE (a,b,c)) )
+val define_parser = (Parse.vars --| Parse.where_) -- Parse_Spec.statement -- Parse.for_fixes
+      >> (fn ((a,b),c) => DEFINE (a,b,c))
 
-fun config_parser ctxt = Parse_Spec.name_facts
-                      >> (pair ctxt o NOTE)
-fun include_parser C ctxt = Scan.repeat1 Parse.name
-                      >> (pair ctxt o C)
-fun parser' p ctxt = p >> pair ctxt
+val config_parser = Parse_Spec.name_facts >> NOTE
+fun include_parser C = Scan.repeat1 Parse.name >> C
 
-fun obtain_parser state =
+val obtain_parser =
      Scan.optional (Parse.vars --| Parse.where_) []
   -- (Parse_Spec.statement -- Parse_Spec.if_statement' -- Parse.for_fixes)
-    >> (fn (BB, ((shows, assumes), fixes)) =>
-    (state, ISAR_OBTAIN ((BB, (fixes, assumes, shows)), []) ))
+    >> (fn (BB, ((shows, assumes), fixes)) => ISAR_OBTAIN ((BB, (fixes, assumes, shows)), []) )
 
-fun consider_parser state = Parse_Spec.obtains
-      >> ( ISAR_CONSIDER o rpair [] o pair Binding.empty
-        #> pair state )
+val consider_parser = Parse_Spec.obtains
+      >> (ISAR_CONSIDER o rpair [] o pair Binding.empty)
 
 local
 
@@ -1854,55 +1853,55 @@ val initial_parsers = Symtab.make [
   ("proof",      proof_parser),
   ("qed"  ,      qed_parser),
   ("apply_end",  tactic_parser APPLY_END),
-  ("by",         parser' ( (Method.parse >> fst)
-                        -- Scan.option (Method.parse >> fst)
-                        >> (ISAR_BY o rpair NONE))),
+  ("by",         (Method.parse >> fst)
+              -- Scan.option (Method.parse >> fst)
+              >> (ISAR_BY o rpair NONE)),
   ("fix",        fix_parser),
   ("assume",     assume_parser),
   ("presume",    assume_parser),
   ("unfolding",  unfold_parser),
   ("using",      using_parser),
   ("case",       case_parser),
-  ("write",      parser' (Parse.syntax_mode -- Parse.and_list1 (Parse.const -- Parse.mixfix)
-                      >> NOTATION) ),
-  ("let",        parser' (Parse.and_list1 (Parse.and_list1 Parse.term -- (\<^keyword>\<open>=\<close> |-- Parse.term))
-                      >> LET) ),
+  ("write",      Parse.syntax_mode -- Parse.and_list1 (Parse.const -- Parse.mixfix)
+              >> NOTATION ),
+  ("let",        Parse.and_list1 (Parse.and_list1 Parse.term -- (\<^keyword>\<open>=\<close> |-- Parse.term))
+              >> LET ),
   ("define",     define_parser),
   ("supply",     config_parser),
   ("note",       config_parser),
   ("include",    include_parser INCLUDE),
   ("including",  include_parser INCLUDING),
 
-  ("defer",      parser' (Scan.optional Parse.nat 1 >> DEFER)),
-  ("prefer",     parser' (Scan.optional Parse.nat 1 >> DEFER)),
+  ("defer",      Scan.optional Parse.nat 1 >> DEFER),
+  ("prefer",     Scan.optional Parse.nat 1 >> DEFER),
   ("with",       facts (WITH o flat)),
   ("from",       facts (FROM o flat)),
-  ("then",       parser' (Scan.succeed ISAR_THEN)),
+  ("then",       Scan.succeed ISAR_THEN),
 
   ("have",       structured_statement' (HAVE  o rpair [])),
   ("show",       structured_statement' (SHOW  o rpair [])),
   ("thus",       structured_statement' (THUS  o rpair [])),
   ("hence",      structured_statement' (HENCE o rpair [])),
-  ("interpret",  parser' (Parse.!!! Parse_Spec.locale_expression >> (OPEN_MODULE o rpair []))),
+  ("interpret",  Parse.!!! Parse_Spec.locale_expression >> (OPEN_MODULE o rpair [])),
   ("consider",   consider_parser),
   ("obtain",     obtain_parser),
 
-  ("next",       parser' (Scan.succeed NEXT)),
-  ("done",       parser' (Scan.succeed DONE)),
-  (".",          parser' (Scan.succeed DOT )),
-  ("..",         parser' (Scan.succeed DDOT)),
+  ("next",       Scan.succeed NEXT),
+  ("done",       Scan.succeed DONE),
+  (".",          Scan.succeed DOT ),
+  ("..",         Scan.succeed DDOT),
 
-  ("{",          parser' (Scan.succeed (BRCBLK ((Binding.empty, NONE), [])))),
-  ("}",          parser' (Scan.succeed ENDBLK)),
-  ("subgoal",    parser' subgoal_parser),
+  ("{",          Scan.succeed (BRCBLK ((Binding.empty, NONE), []))),
+  ("}",          Scan.succeed ENDBLK),
+  ("subgoal",    subgoal_parser),
 
   ("oops",       BAD_SOURCE),
-  ("sorry",      parser' (Scan.succeed SORRY)),
+  ("sorry",      Scan.succeed SORRY),
 
   ("also",       facts' (ALSO o flat)),
   ("finally",    facts' (FINALLY o rpair false o flat)),
-  ("moreover",   parser' (Scan.succeed MOREOVER)),
-  ("ultimately", parser' (Scan.succeed (ULTIMATELY false))),
+  ("moreover",   Scan.succeed MOREOVER),
+  ("ultimately", Scan.succeed (ULTIMATELY false)),
 
   ("print_trans_rules", ignore),
   ("help",       ignore),
@@ -2505,11 +2504,11 @@ val parse_isar : Toplevel.state * Token.src list -> ast' =
             val tr = Outer_Syntax.parse_span (Toplevel.theory_of s) (fn _ => error "BUG") src
             val s' = Toplevel.command_exception false tr s
 
-            fun parser ctxt toks =
-              let val ((s,ast),toks) = parser0 ctxt toks
+            fun parser toks =
+              let val (ast, toks) = parser0 toks
                in case set_time ast
-               of NONE => ((s,ast),toks)
-                | SOME (_, set) => ((s, set (tac_time (Toplevel.timing_of tr))),toks)
+               of NONE => (ast,toks)
+                | SOME (_, set) => (set (tac_time (Toplevel.timing_of tr)),toks)
               end
 
             fun BLK F =
@@ -2517,8 +2516,8 @@ val parse_isar : Toplevel.state * Token.src list -> ast' =
                in parse s_srcs'' |> apfst (fn L => F ast :: L)
               end
 
-         in case chk_end ( parser (Toplevel.proof_of s) (tl src @ [Token.eof])
-                        |> apfst (apfst SOME))
+         in case chk_end ( parser (tl src @ [Token.eof])
+                        |> apfst (pair (SOME (Toplevel.proof_of s))))
          of ast as (_, DONE) => ([ast], (s', srcs))
           | ast as (_, DDOT) => ([ast], (s', srcs))
           | ast as (_, DOT)  => ([ast], (s', srcs))
@@ -2555,6 +2554,64 @@ val parse_isar : Toplevel.state * Token.src list -> ast' =
    in parse
    #> (fn (ret, (_, [])) => ret
         | (_, (_, toks)) => raise Parse_Fail toks)
+  end
+
+val parse_isar_no_state : Token.src list -> ast' =
+  let fun chk_end (ret, []) = ret
+        | chk_end (ret, [eof]) =
+            if Token.is_eof eof then ret else raise Parse_Fail [[eof]]
+        | chk_end (_, src) = raise Parse_Fail [src]
+
+      fun parse [] = raise Parse_Fail []
+        | parse (src::srcs) =
+        let val (name,_) = Token.name_of_src src
+            val parser = case Symtab.lookup initial_parsers name
+                           of SOME parser => parser
+                            | NONE => raise Unsupported name
+
+            fun BLK F =
+              let val (ast, s_srcs'') = parse srcs
+               in parse s_srcs'' |> apfst (fn L => F ast :: L)
+              end
+
+         in case chk_end ( parser (tl src @ [Token.eof])
+                        |> apfst (pair NONE) )
+         of ast as (_, DONE) => ([ast], srcs)
+          | ast as (_, DDOT) => ([ast], srcs)
+          | ast as (_, DOT)  => ([ast], srcs)
+          | ast as (_, QED _) => ([ast], srcs)
+          | ast as (_, ENDBLK) => ([ast], srcs)
+          | ast as (_, ISAR_BY _) => ([ast], srcs)
+          | ast as (_, APPLY_END _) => ([ast], srcs)
+          | (ctxt, HAVE  (smt, _)) => BLK (fn ast => (ctxt, HAVE  (smt, ast)))
+          | (ctxt, THUS  (smt, _)) => BLK (fn ast => (ctxt, THUS  (smt, ast)))
+          | (ctxt, HENCE (smt, _)) => BLK (fn ast => (ctxt, HENCE (smt, ast)))
+          | (ctxt, SHOW  (smt, _)) => BLK (fn ast => (ctxt, SHOW  (smt, ast)))
+          | (ctxt, SUBGOAL (smt, _)) => BLK (fn ast => (ctxt, SUBGOAL (smt, ast)))
+          | (ctxt, ISAR_CONSIDER (arg, _)) => BLK (fn ast => (ctxt, ISAR_CONSIDER (arg, ast)))
+          | (ctxt, ISAR_OBTAIN (arg, _)) => BLK (fn ast => (ctxt, ISAR_OBTAIN (arg, ast)))
+          | (ctxt, OPEN_MODULE (expr, _)) => BLK (fn ast => (ctxt, OPEN_MODULE (expr, ast)))
+          | (ctxt, PROOF (txt, _)) =>
+              let val (ast, s_srcs'') = parse srcs
+                  fun chk [] = raise Unsupported "proof is not ended by `qed`"
+                    | chk [(_, QED _)] = ()
+                    | chk (_ :: L) = chk L
+               in chk ast
+                ; ([(ctxt, PROOF (txt, ast))], s_srcs'')
+              end
+          | (ctxt, BRCBLK (data, _)) =>
+              BLK (fn ast =>
+                let fun chk [] = raise Unsupported "`{` is not ended by `}`"
+                      | chk [(_, ENDBLK)] = ()
+                      | chk (_ :: L) = chk L
+                 in chk ast
+                  ; (ctxt, BRCBLK (data, ast))
+                end)
+          | other => parse srcs |> apfst (fn L => other :: L)
+        end
+   in parse
+   #> (fn (ret, []) => ret
+        | (_, toks) => raise Parse_Fail toks)
   end
 
 
@@ -5223,7 +5280,7 @@ fun print_AST (Isar_AST ast) = print_ast ast
   | print_AST (Mini_AST ast) = print_mast true ast
   | print_AST NO_AST = ""
 
-fun translate ret (s, toks) =
+fun elaborate ret (s, toks) =
   let val s = Toplevel.command_exception false
                   (Toplevel.proof (Proof.map_context ( Config.put Printer.show_markup false
                                                     #> Config.put Goal.quick_and_dirty true
@@ -5265,7 +5322,7 @@ fun translate ret (s, toks) =
    |> separate_prf_pass
    |> reduce_MPROOFs
       (*any tactic is applied only to the leading subgoal, in form `apply((tac)[1])`*)
-      (*at this stage,   , QED, THUS, HENCE, SHOW, USING, DEFER, PREFER, WITH,
+      (*at this stage,   , QED, THUS, HENCE, SHOW, USING, DEFER,  , WITH,
                        FROM, ISAR_THEN, ISAR_BY, APPLY_END, DONE, DDOT, UNFOLD, NEXT, SORRY
         are eliminated, leaving FIX, ASSUME, CASE, ISAR_OBTAIN, ISAR_CONSIDER,
                        DOT, TACTIC, DEFINE, LET, NOTATION, HAVE, OPEN_MODULE, NOTE, MPROOF,
@@ -5298,7 +5355,7 @@ fun translate_m targets ret (s, toks) =
       fun report cat rep =
             if mast_cheat' rep then rep else (ret := (cat, (Mini_AST rep, [])) :: !ret ; rep)
       fun err cat E = (ret := (cat, (NO_AST, [E])) :: !ret; NONE)
-      val raw = trans_to_minlang (translate ret (s, toks)) s0 |> fst
+      val raw = trans_to_minlang (elaborate ret (s, toks)) s0 |> fst
              |> norm_Mtac                            (*destroys state*)
              |> validatem ctxt0 (Minilang.INIT' ps)
              |> gen_target "raw" ? report "raw"
@@ -5366,7 +5423,7 @@ fun parse state src =
   end
 
 fun anotate_types'  state src = anotate_types (parse state src)
-fun translate'  ret state src = translate ret (parse state src)
+fun translate'  ret state src = elaborate ret (parse state src)
 fun translate'm targets ret state src = translate_m targets ret (parse state src)
 fun translate'test state src =
   let val output = Unsynchronized.ref []

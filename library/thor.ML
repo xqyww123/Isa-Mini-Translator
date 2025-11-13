@@ -80,8 +80,8 @@ fun print_case_newthings (Command_Span.Span (Command_Span.Command_Span (name, _)
       then let
            val ctxt = Toplevel.context_of stat
            val proof = Toplevel.proof_of stat
-           val ((_,MinLang_Translator.CASE (_, (name, vs))), _) =
-                MinLang_Translator.case_parser proof (tl (filter Token.is_proper toks) @ [Token.eof])
+           val (MinLang_Translator.CASE (_, (name, vs)), _) =
+                MinLang_Translator.case_parser (tl (filter Token.is_proper toks) @ [Token.eof])
            val kase as Rule_Cases.Case {fixes,...} =
                 Proof_Context.check_case ctxt true (name, Position.none)
                                               (map (Option.map Binding.name) vs)
@@ -147,8 +147,7 @@ fun translate_SH improved stat commands =
 fun translate_thor improved stat commands =
   let fun translate _ [] = []
         | translate stat (all_commands as (tr, span) :: commands) =
-            let val aa = concat_strs (map (mkstr o snd) all_commands)
-                fun fallback () =
+            let fun fallback () =
                      case Toplevel.command_errors true tr stat
                        of ([], SOME stat') =>
                                mkstr span
@@ -160,7 +159,7 @@ fun translate_thor improved stat commands =
             if unsuported span
             then raise Unsupported "oops or sorry"
             else *) if Toplevel.is_proof stat andalso
-                    is_tactic all_commands
+                       begin_with_tactic all_commands
             then let val ctxt = Toplevel.context_of stat
                      val sequent = #goal (Proof.goal (Toplevel.proof_of stat))
 

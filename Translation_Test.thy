@@ -204,13 +204,13 @@ apply (simp_all add : binomial_eq_0)
 .   
 mqed  
 .                     
-                           
-ML \<open>ML_Translator_Top.init_translator (Path.explode "/tmp/xxx")
+                            
+ML \<open>ML_Translator_Top.init_translator ["refined"]
                                       (ML_Translator_Top.interactive_reporter ())\<close>
   
   
        
-ML \<open>ML_Translator_Top.translate_file "/home/xero/repo/Isabelle2024/src/HOL/Library/Sublist.thy"\<close>
+ML \<open>ML_Translator_Top.translate_file "/home/qiyuan/Current/MLML/contrib/Isabelle2024/src/HOL/Library/Sublist.thy"\<close>
 
 ML \<open>ML_Translator_Top.init_translator (Path.explode "/tmp/xxx")
                                       (ML_Translator_Top.interactive_reporter ())\<close>
