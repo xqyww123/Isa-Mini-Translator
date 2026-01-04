@@ -1590,130 +1590,169 @@ fun print_locale_expr (exprs, vars) =
        in implode_with " + " (map print_expr exprs) @ print_for vars
       end
 
+val space_word = Byte.charToByte #" "
+val newline_word = Byte.charToByte #"\n"
+fun mk_newline_ident' i = Byte.bytesToString (Word8Vector.tabulate (2*i + 1, fn i =>
+      if i = 0 then newline_word else space_word))
+val newline_indents = Vector.tabulate (20, mk_newline_ident')
+fun newline_indent_of n = if n < 20 then Vector.sub (newline_indents, n)
+                                    else mk_newline_ident' n
+
+fun mk_ident' i = Byte.bytesToString (Word8Vector.tabulate (2*i, K space_word))
+val indents = Vector.tabulate (10, fn i => mk_ident' i)
+fun indent_of n = if n < 10 then Vector.sub (indents, n) else mk_ident' n
+
+
 val print_ast =
-  let fun print [] = []
-        | print ((_, PROOF (tac, body)) :: L) =
-            "proof (" :: print_method tac @ ") \n" :: print body @ print L
-        | print ((_, QED (tac, _)) :: L) =
-            "qed" :: (case tac of SOME tac' => " ("::print_method tac'@[")"] | _ => []) @ "\n" :: print L
-        | print ((_, BRCBLK ((B,_), body)) :: L) =
-              "{\n" :: print body
-            @ "note " :: quote_space (Binding.name_of B) :: " = this\n"
-           :: print L
-        | print ((_, ENDBLK) :: L) = "}\n" :: print L
-        | print ((_, FIX vs) :: L) = "fix " :: print_vars vs @ "\n" :: print L
-        | print ((_, ASSUME ss) :: L) = "assume " :: print_structured_statement ss @ "\n" :: print L
-        | print ((_, HAVE (ss, body)) :: L) =
-            "have " :: print_structured_statement' ss @ "\n" :: print body @ print L
-        | print ((_, THUS (ss, body)) :: L) =
-            "thus " :: print_structured_statement' ss @ "\n" :: print body @ print L
-        | print ((_, HENCE (ss, body)) :: L) =
-            "hence " :: print_structured_statement' ss @ "\n" :: print body @ print L
-        | print ((_, SHOW (ss, body)) :: L) =
-            "show " :: print_structured_statement' ss @ "\n" :: print body @ print L
-        | print ((_, CASE (B,(N,vs))) :: L) =
-            "case " :: print_attrbind' B @ " " ::
+  let datatype mode = NL | SP | ST
+      fun newline i NL = newline_indent_of i
+        | newline i ST = indent_of i
+        | newline _ SP = " "
+      fun print _ _ [] = ["\n"]
+        | print i ik ((_, PROOF (tac, body)) :: L) =
+              newline i ik :: "proof (" :: print_method tac @ ")" :: print (i+1) NL body
+            @ print i NL L
+        | print i _ ((_, QED (tac, _)) :: L) =
+            newline (i-1) NL :: "qed" ::
+            (case tac of SOME tac' => " ("::print_method tac'@[")"] | _ => [])
+            @ print i NL L
+        | print i ik ((_, BRCBLK ((B,_), body)) :: L) =
+              newline i ik :: "{" :: print (i+1) NL body
+            @ newline i NL :: "note " :: quote_space (Binding.name_of B) :: " = this"
+           :: print i NL L
+        | print i _ ((_, ENDBLK) :: L) = newline (i-1) NL :: "}" :: print (i-1) NL L
+        | print i ik ((_, FIX vs) :: L) = newline i ik :: "fix " :: print_vars vs @ print i NL L
+        | print i ik ((_, ASSUME ss) :: L) =
+              newline i ik :: "assume " :: print_structured_statement ss @ print i NL L
+        | print i ik ((_, HAVE (ss, body)) :: L) =
+              newline i ik :: "have " :: print_structured_statement' ss
+            @ print (i-1) NL body @ print i NL L
+        | print i ik ((_, THUS (ss, body)) :: L) =
+              newline i ik :: "thus " :: print_structured_statement' ss
+            @ print (i+1) NL body @ print i NL L
+        | print i ik ((_, HENCE (ss, body)) :: L) =
+              newline i ik :: "hence " :: print_structured_statement' ss
+            @ print (i+1) NL body @ print i NL L
+        | print i ik ((_, SHOW (ss, body)) :: L) =
+              newline i ik :: "show " :: print_structured_statement' ss
+            @ print (i+1) NL body @ print i NL L
+        | print i ik ((_, CASE (B,(N,vs))) :: L) =
+              newline i ik :: "case " :: print_attrbind' B @ " " ::
             (case vs of [] => [N]
                       | _ => " (" :: N ::
                              maps (fn SOME N => [" ",N] | NONE => ["_"]) vs @ [")"]
-            ) @ "\n" :: print L
-        | print ((_, ISAR_OBTAIN ((vs,ss), body)) :: L) =
-            "obtain " :: print_vars vs
-                       @ " where " :: print_structured_statement ss
-                       @ "\n" :: print body @ print L
-        | print ((_, ISAR_CONSIDER ((B, obt), body)) :: L) =
-            "consider " ::
-            implode_with " | " (map print_obtain obt) @ "\n" :: print body
-            @ "note " :: Binding.name_of B :: " = this\n" :: print L
-        | print ((_, SUBGOAL ((a,b,(opt,c)), body)) :: L) =
-            "subgoal"
+            ) @ print i NL L
+        | print i ik ((_, ISAR_OBTAIN ((vs,ss), body)) :: L) =
+              newline i ik :: "obtain " :: print_vars vs
+            @ " where " :: print_structured_statement ss
+            @ print (i+1) NL body @ print i NL L
+        | print i ik ((_, ISAR_CONSIDER ((B, obt), body)) :: L) =
+            newline i ik :: "consider " ::
+            implode_with " | " (map print_obtain obt) @ print (i+1) NL body
+            @ newline i NL :: "note " :: Binding.name_of B :: " = this" :: print i NL L
+        | print i ik ((_, SUBGOAL ((a,b,(opt,c)), body)) :: L) =
+            newline i ik :: "subgoal"
          :: (if Binding.is_empty_atts a then [] else " " :: print_attrbind a)
           @ (case b of SOME b' => "premises " ::  print_attrbind b'
                      | NONE => [] )
           @ (if opt then " for ..." else " for ")
          :: implode_with " and " (map (fn (NONE  , _) => ["_"]
                                         | (SOME s, _) => [s] ) c)
-          @ "\n" :: print body
-          @ print L
-        | print ((_, USING facts) :: L) =
-            "using " :: print_facts facts @ "\n" :: print L
+          @ print (i+1) NL body
+          @ print i NL L
+        | print i ik ((_, USING facts) :: L) =
+            newline i ik :: "using " :: print_facts facts @ print i SP L
 (*        | print ((_, MCALCULATION (B, goal, using)) :: L) =
             "have " :: quote_space (Binding.name_of B) :: ": " :: print_term goal
           @ " using" :: maps (maps (fn B => " " :: print_factref B) o #2) using
           @ " sorry\n" :: print L *)
-        | print ((_, DEFER i) :: L) =
-            "defer " :: string_of_int i :: "\n" :: print L
-        | print ((_, PREFER i) :: L) =
-            "prefer " :: string_of_int i :: "\n" :: print L
-        | print ((_, WITH facts) :: L) =
-            "with " :: implode_with " " (map print_fact facts) @ " " :: print L
-        | print ((_, FROM facts) :: L) =
-            "from " :: implode_with " " (map print_fact facts) @ " " :: print L
-        | print ((_, ISAR_THEN) :: L) =
-            "then " :: print L
-        | print ((_, ISAR_BY ((tac1, tac2), _)) :: L) =
-            "by (" :: print_method tac1 @ ") " ::
-              (case tac2 of SOME tac => "("::print_method tac @ [")"] | _ => []) @
-              "\n" :: print L
-        | print ((_, APPLY_END tac) :: L) =
-            "apply_end (" :: print_method tac @ ")\n" :: print L
-        | print ((_, DONE) :: L) = "done\n" :: print L
-        | print ((_, DDOT) :: L) = "..\n" :: print L
-        | print ((_,  DOT) :: L) = ".\n"  :: print L
-        | print ((_, UNFOLD facts) :: L) =
-            "unfolding " :: implode_with " " (map print_fact facts) @ "\n" :: print L
-        | print ((_, TACTIC (tac, (using, _), _)) :: L) =
-            (if null using then [] else "using " :: print_facts using)
-            @ " apply (" :: print_method tac @ ")\n" :: print L
-        | print ((_, DEFINE (vs, astmt, fixes)) :: L) =
-            "define " :: print_vars vs
+        | print k ik ((_, DEFER i) :: L) =
+            newline k ik :: "defer " :: string_of_int i :: print i NL L
+        | print k ik ((_, PREFER i) :: L) =
+            newline k ik :: "prefer " :: string_of_int i :: print i NL L
+        | print i ik ((_, WITH facts) :: L) =
+            newline i ik :: "with " :: implode_with " " (map print_fact facts) @ print i SP L
+        | print i ik ((_, FROM facts) :: L) =
+            newline i ik :: "from " :: implode_with " " (map print_fact facts) @ print i SP L
+        | print i ik ((_, ISAR_THEN) :: L) =
+            newline i ik :: "then" :: print i SP L
+        | print i ik ((_, ISAR_BY ((tac1, tac2), _)) :: L) =
+            newline i ik :: "by (" :: print_method tac1 @ ") " ::
+              (case tac2 of SOME tac => "("::print_method tac @ [")"] | _ => [])
+            @ print i NL L
+        | print i ik ((_, APPLY_END tac) :: L) =
+            newline i ik :: "apply_end (" :: print_method tac @ ")" :: print i NL L
+        | print i ik ((_, DONE) :: L) = newline i ik :: "done" :: print i NL L
+        | print i _ ((_, DDOT) :: L) = newline i SP :: ".." :: print i NL L
+        | print i _ ((_,  DOT) :: L) = newline i SP :: "."  :: print i NL L
+        | print i ik ((_, ALSO _) :: L) =
+            newline i ik :: "also" :: print i SP L
+        | print i ik ((_, FINALLY _) :: L) =
+            newline i ik :: "finally" :: print i SP L
+        | print i ik ((_, MOREOVER) :: L) =
+            newline i ik :: "moreover" :: print i SP L
+        | print i ik ((_, ULTIMATELY _) :: L) =
+            newline i ik :: "ultimately" :: print i SP L
+        | print i ik ((_, UNFOLD facts) :: L) =
+            newline i ik :: "unfolding " :: implode_with " " (map print_fact facts) @ print i NL L
+        | print i ik ((_, TACTIC (tac, (using, _), _)) :: L) =
+            newline i ik
+            :: (if null using then [] else "using " :: print_facts using)
+            @ "apply (" :: print_method tac @ ")" :: print i NL L
+        | print i ik ((_, DEFINE (vs, astmt, fixes)) :: L) =
+            newline i ik
+             :: "define " :: print_vars vs
               @ " where " :: print_attr_statements astmt
               @ print_for fixes
-              @ "\n" :: print L
-        | print ((_, LET args) :: L) =
-            "let " :: implode_with " and " (map (fn (vs,tm) =>
+              @ print i NL L
+        | print i ik ((_, LET args) :: L) =
+            newline i ik
+            :: "let " :: implode_with " and " (map (fn (vs,tm) =>
                implode_with " " (map (single o trim_markup) vs) @ " = " :: print_term tm
              ) args)
-            @ "\n" :: print L
-        | print ((_, NOTATION (mode, xx)) :: L) =
-            "write " :: (if mode = Syntax.mode_default then []
+            @ print i NL L
+        | print i ik ((_, NOTATION (mode, xx)) :: L) =
+            newline i ik
+             :: "write " :: (if mode = Syntax.mode_default then []
                          else case mode
                            of ("", false)   => ["output"]
                             | (name, false) => [name, " output"]
                             | (name, _ )    => [name] )
               @ implode_with " and " (map (fn (tm,synt) =>
                     print_term tm @ " (" :: print_mixfix synt @ [")"] ) xx)
-              @ "\n" :: print L
-        | print ((_, INCLUDE names) :: L) =
-              "include " :: implode_with " " (map (single o quote_space) names)
-            @ print L
-        | print ((_, INCLUDING names) :: L) =
-              "including " :: implode_with " " (map (single o quote_space) names)
-            @ print L
-        | print ((_, NEXT) :: L) =
-            "next\n" :: print L
-        | print ((_, OPEN_MODULE (exprs, body)) :: L) =
-                "interpret " :: print_locale_expr  exprs
-              @ "\n" :: print body @ print L
-        | print ((_, NOTE notes) :: L) =
-            "note " :: implode_with " and " (
+              @ print i NL L
+        | print i ik ((_, INCLUDE names) :: L) =
+              newline i ik
+           :: "include " :: implode_with " " (map (single o quote_space) names)
+            @ print i NL L
+        | print i ik ((_, INCLUDING names) :: L) =
+              newline i ik :: "including " :: implode_with " " (map (single o quote_space) names)
+            @ print i NL L
+        | print i ik ((_, NEXT) :: L) =
+            newline i ik :: "next" :: print i NL L
+        | print i ik ((_, OPEN_MODULE (exprs, body)) :: L) =
+                newline i ik :: "interpret " :: print_locale_expr  exprs
+              @ print i NL body @ print i NL L
+        | print i ik ((_, NOTE notes) :: L) =
+            newline i ik :: "note " :: implode_with " and " (
                 map (fn (B,facts) => print_attrbind B @ " = " :: print_facts facts) notes)
-            @ "\n" :: print L
-        | print ((_, MPROOF (pre, (_,ss), _, prf)) :: L) =
-             "mproof\n" :: print pre
-              @ "show " :: print_structured_statement' ss
-              @ "\n" :: print prf
-              @ "mqed\n" :: print L
-        | print ((_, BRANCH_SUBGOALS []) :: L) = print L
-        | print ((_, BRANCH_SUBGOALS [body]) :: L) = print body @ print L
-        | print ((_, BRANCH_SUBGOALS bodys) :: L) =
-               "(*" :: string_of_int (length bodys) :: " subgoals*)\n"
-            :: implode_with "(*NEXT*)\n" (map (fn body => print body) bodys)
-             @ "(*end " :: string_of_int (length bodys) :: " subgoals*)\n"
-            :: print L
-        | print ((_, SORRY) :: L) = "sorry\n" :: print L
+            @ print i NL L
+        | print i ik ((_, MPROOF (pre, (_,ss), _, prf)) :: L) =
+             newline i ik :: "mproof" :: print (i+1) NL pre
+              @ newline (i+1) NL :: "show " :: print_structured_statement' ss
+              @ print (i+2) NL prf
+              @ newline i NL :: "mqed" :: print i NL L
+        | print i ik ((_, BRANCH_SUBGOALS []) :: L) = print i ik L
+        | print i ik ((_, BRANCH_SUBGOALS [body]) :: L) = print i ik body @ print i NL L
+        | print i _  ((_, BRANCH_SUBGOALS bodys) :: L) =
+               newline i NL :: "(*" :: string_of_int (length bodys) :: " subgoals*)"
+            :: implode_with (newline i NL ^ "(*NEXT*)")
+                            (map (print (i+1) NL) bodys)
+             @ newline i NL :: "(*end " :: string_of_int (length bodys) :: " subgoals*)"
+            :: print i NL L
+        | print i ik ((_, SORRY) :: L) = newline i ik :: "sorry" :: print i NL L
 
-   in print
+   in print 0 ST
   end
 
 val print_ast = String.concat o print_ast
@@ -1724,11 +1763,6 @@ fun print_mvars NONE = []
       @ implode_with " " (map (fn NONE => ["_"] | SOME s => [s]) vs)
 fun print_with _ [] = []
   | print_with m facts = m :: print_facts facts
-
-val space_word = Byte.charToByte #" "
-fun mk_ident' i = Byte.bytesToString (Word8Vector.tabulate (2*i, K space_word))
-val indents = Vector.tabulate (10, fn i => mk_ident' i)
-fun indent_of n = if n < 10 then Vector.sub (indents, n) else mk_ident' n
 
 val print_comments = Unsynchronized.ref false
 
@@ -2551,6 +2585,7 @@ val parse_isar : Toplevel.state * Token.src list -> ast' =
                 end)
           | other => parse (s', srcs) |> apfst (fn L => other :: L)
         end
+      handle IGNORE => parse (s, srcs)
    in parse
    #> (fn (ret, (_, [])) => ret
         | (_, (_, toks)) => raise Parse_Fail toks)
@@ -2904,8 +2939,6 @@ val norm_FROM_WITH_USING = linear_pass' NONE (fn history => recursive (
        | (s, USING facts) :: (_, SUBGOAL (stmt, Prf)) :: L =>
          (s, SUBGOAL (stmt, (restore_using Prf, USING facts) :: Prf)) :: L
   end))
-
-val _ = subst_fact_in_toks
 
 (* Resolving \<open>this\<close> *)
 
@@ -4029,9 +4062,6 @@ val collect_fix_assms_case = elementwise_pass NONE (
 )
 
 val empty_vector = Vector.tabulate (0, fn _ => error "BUG empty vector")
-
-fun count F [] = 0
-  | count F (x :: L) = F x + count F L
 
 val translating_bracket = linear_pass NONE (
   fn (s0, BRCBLK ((B,data), body)) :: L =>

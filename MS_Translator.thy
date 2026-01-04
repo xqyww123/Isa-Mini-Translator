@@ -1,5 +1,5 @@
 theory MS_Translator
-  imports Minilang.Minilang
+  imports Minilang.Minilang Isa_REPL.Isa_REPL
   keywords "mproof" :: prf_block % "proof"
        and "mqed"   :: qed_block % "proof"
 begin
@@ -14,6 +14,7 @@ method_setup msorry = \<open>
 ML_file \<open>library/translator_auxcmds.ML\<close>
 ML_file \<open>library/oneshot_ref.ML\<close>
 ML_file \<open>library/aux.ML\<close>
+ML_file \<open>library/print_formats.ML\<close>
 ML_file \<open>library/translator.ML\<close>
 ML_file \<open>library/thor.ML\<close>
 
