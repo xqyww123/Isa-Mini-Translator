@@ -154,7 +154,7 @@ val translate_m  : string list -> ret Unsynchronized.ref -> Toplevel.state * Tok
 val translate'm  : string list -> ret Unsynchronized.ref -> Toplevel.state -> string -> unit
 val translate'test : Toplevel.state -> string -> unit
 
-val print_ast  :  ast' -> string
+val print_ast  : bool (*use_mproof*) -> ast' -> string
 val print_mast : bool (*prints response*) -> mast' -> string
 
 val parse_isar : Toplevel.state * Token.src list -> ast'
@@ -1603,8 +1603,10 @@ val indents = Vector.tabulate (10, fn i => mk_ident' i)
 fun indent_of n = if n < 10 then Vector.sub (indents, n) else mk_ident' n
 
 
-val print_ast =
-  let datatype mode = NL | SP | ST
+fun print_ast use_mproof =
+  let val mproof = if use_mproof then "mproof" else "proof (-)"
+      val mqed = if use_mproof then "mqed" else "qed"
+      datatype mode = NL | SP | ST
       fun newline i NL = newline_indent_of i
         | newline i ST = indent_of i
         | newline _ SP = " "
@@ -1738,10 +1740,10 @@ val print_ast =
                 map (fn (B,facts) => print_attrbind B @ " = " :: print_facts facts) notes)
             @ print i NL L
         | print i ik ((_, MPROOF (pre, (_,ss), _, prf)) :: L) =
-             newline i ik :: "mproof" :: print (i+1) NL pre
+             newline i ik :: mproof :: print (i+1) NL pre
               @ newline (i+1) NL :: "show " :: print_structured_statement' ss
               @ print (i+2) NL prf
-              @ newline i NL :: "mqed" :: print i NL L
+              @ newline i NL :: mqed :: print i NL L
         | print i ik ((_, BRANCH_SUBGOALS []) :: L) = print i ik L
         | print i ik ((_, BRANCH_SUBGOALS [body]) :: L) = print i ik body @ print i NL L
         | print i _  ((_, BRANCH_SUBGOALS bodys) :: L) =
@@ -1755,7 +1757,7 @@ val print_ast =
    in print 0 ST
   end
 
-val print_ast = String.concat o print_ast
+val print_ast = String.concat oo print_ast
 
 fun print_mvars NONE = []
   | print_mvars (SOME vs) =
@@ -5306,7 +5308,7 @@ fun anotate_types (s, toks) =
 datatype AST = Isar_AST of ast' | Mini_AST of mast' | NO_AST
 type ret = (string * (AST * exn list)) list
 
-fun print_AST (Isar_AST ast) = print_ast ast
+fun print_AST (Isar_AST ast) = print_ast true ast
   | print_AST (Mini_AST ast) = print_mast true ast
   | print_AST NO_AST = ""
 
