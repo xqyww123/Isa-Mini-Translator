@@ -73,9 +73,9 @@ fun print_goal (Command_Span.Span (Command_Span.Command_Span (name, _), _)) stat
       else []
   | print_goal _ _ = []
 
-fun pretty_tm ctxt tm = single (quote_space (trim_markup (Syntax.string_of_term ctxt tm)))
+fun pretty_tm kws ctxt tm = single (quote_space kws (trim_markup (Syntax.string_of_term ctxt tm)))
 
-fun print_case_newthings (Command_Span.Span (Command_Span.Command_Span (name, _), toks)) stat =
+fun print_case_newthings kws (Command_Span.Span (Command_Span.Command_Span (name, _), toks)) stat =
       if name = "case"
       then let
            val ctxt = Toplevel.context_of stat
@@ -91,21 +91,21 @@ fun print_case_newthings (Command_Span.Span (Command_Span.Command_Span (name, _)
                        else "(*fixes variables "
                           :: implode_with' " and " (
                                 map (fn (name,typ) =>
-                                  [Binding.name_of name, " :: ", quote_space (pretty_ty ctxt typ)] ) fixes)
+                                  [Binding.name_of name, " :: ", quote_space kws (pretty_ty ctxt typ)] ) fixes)
                              [" *)"] )
                    @ ( if null facts
                        then []
                        else "(*introduces facts "
                          :: implode_with' " and " (
                                 map (fn (v,T) =>
-                                  v :: ": " :: implode_with " " (map (pretty_tm ctxt) T)) facts)
+                                  v :: ": " :: implode_with " " (map (pretty_tm kws ctxt) T)) facts)
                             [" *)"] )
         in case ret
         of [] => []
          | L => [(NONE, String.concat L)]
        end
       else []
-  | print_case_newthings _ _ = []
+  | print_case_newthings _ _ _ = []
 
 fun translate_SH improved stat commands =
    let val ctxt = Toplevel.context_of stat
@@ -146,14 +146,15 @@ fun translate_SH improved stat commands =
    end
 
 fun translate_thor improved stat commands =
-  let fun translate _ [] = []
+  let val kws = SOME (Thy_Header.get_keywords (Toplevel.theory_of stat))
+      fun translate _ [] = []
         | translate stat (all_commands as (tr, span) :: commands) =
             let fun fallback () =
                      case Toplevel.command_errors true tr stat
                        of ([], SOME stat') =>
                                mkstr span
                             :: print_goal span stat'
-                             @ print_case_newthings span stat'
+                             @ print_case_newthings kws span stat'
                              @ translate stat' commands
                         | X => error "BUG translate_thor - Isar evaluation fails"
              in (*
@@ -163,7 +164,6 @@ fun translate_thor improved stat commands =
                        begin_with_tactic all_commands
             then let val ctxt = Toplevel.context_of stat
                      val sequent = #goal (Proof.goal (Toplevel.proof_of stat))
-                     val kws = Thy_Header.get_keywords (Toplevel.theory_of stat)
 
                      val override =
                         if improved
@@ -188,9 +188,9 @@ fun translate_thor improved stat commands =
                                 if improved
                                 then let
                                      val add = (if null w  then [] else [" add: "])
-                                             @ print_facts (SOME kws) w
+                                             @ print_facts kws w
                                      val del = (if null wo then [] else [" del: "])
-                                             @ print_facts (SOME kws) (#del override)
+                                             @ print_facts kws (#del override)
                                      val code = String.concat (
                                                    "by (auto_sledgehammer"
                                                 :: add

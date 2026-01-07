@@ -1628,21 +1628,21 @@ fun may_print_prop ctxt (prop,fallback) =
   print_prop ctxt prop
     handle TERM _ => fallback
 
-fun print_statement (tm, [])   = print_term tm
-  | print_statement (tm, pats) = print_term tm @ maps (fn pat => " (" :: print_term pat @ [")"]) pats
-val print_statements = implode_with " " o map print_statement
-val print_attr_statements = implode_with " and " o
-      map (fn (B,tms) => print_attrbind' B @ print_statements tms)
+fun print_statement kws (tm, [])   = print_term kws tm
+  | print_statement kws (tm, pats) = print_term kws tm @ maps (fn pat => " (is " :: print_term kws pat @ [")"]) pats
+fun print_statements kws ss = implode_with " " (map (print_statement kws) ss)
+fun print_attr_statements kws ss = implode_with " and " (
+      map (fn (B,tms) => print_attrbind' kws B @ print_statements kws tms) ss)
 
-fun print_structured_statement ((vars, assms, show) : structured_statement) =
-      print_attr_statements show
-        @ (if null assms then [] else " if " :: implode_with " and " (map print_statements assms))
-        @ print_for vars
+fun print_structured_statement kws ((vars, assms, show) : structured_statement) =
+      print_attr_statements kws show
+        @ (if null assms then [] else " if " :: implode_with " and " (map (print_statements kws) assms))
+        @ print_for kws vars
 
-fun print_structured_statement' ((vars, assms, show) : structured_statement') =
-      print_attr_statements show
-        @ (if null assms then [] else " if " :: print_attr_statements assms)
-        @ print_for vars
+fun print_structured_statement' kws ((vars, assms, show) : structured_statement') =
+      print_attr_statements kws show
+        @ (if null assms then [] else " if " :: print_attr_statements kws assms)
+        @ print_for kws vars
 
 fun attr_statement_has_macro (tm, _) =
       String.isSubstring "?case" tm orelse String.isSubstring "?thesis" tm
@@ -1665,28 +1665,28 @@ fun print_structured_statement' ((vars, assms, show) : structured_statement') =
              ) assms 1))
         ) *)
 
-fun print_obtain (B,(vs,props)) =
+fun print_obtain kws (B,(vs,props)) =
         (if Binding.is_empty B then [] else ["(", Binding.name_of B, ")"])
-      @ (if null vs then [] else print_vars vs @ [" where "])
-      @ implode_with " and " (map print_term props)
+      @ (if null vs then [] else print_vars kws vs @ [" where "])
+      @ implode_with " and " (map (print_term kws) props)
 
-fun print_locale_expr (exprs, vars) =
+fun print_locale_expr kws (exprs, vars) =
       let fun print_insts (Expression.Positional terms) =
-                maps (fn NONE => [" _"] | SOME tm => " " :: print_term tm) terms
+                maps (fn NONE => [" _"] | SOME tm => " " :: print_term kws tm) terms
             | print_insts (Expression.Named terms) =
                 " where " :: implode_with " and " (
-                    map (fn (name,tm) => name :: " = " :: print_term tm) terms)
+                    map (fn (name,tm) => name :: " = " :: print_term kws tm) terms)
           fun print_rewr [] = []
             | print_rewr rewrs =
                 " rewrites " :: implode_with " and " (
-                    map (fn (B,prop) => print_attrbind' B @ print_term prop
+                    map (fn (B,prop) => print_attrbind' kws B @ print_term kws prop
                 ) rewrs)
           fun print_prefix (qual,mandatory) =
                 if (qual,mandatory) = ("",false) then []
                 else qual :: (if mandatory then [] else ["?"]) @ [": "]
           fun print_expr ((name,_), (prefix, (inst, rewr))) =
                 print_prefix prefix @ name :: print_insts inst @ print_rewr rewr
-       in implode_with " + " (map print_expr exprs) @ print_for vars
+       in implode_with " + " (map print_expr exprs) @ print_for kws vars
       end
 
 val space_word = Byte.charToByte #" "
@@ -1830,34 +1830,34 @@ fun print_ast verbose kws =
                then print i NL L
                else newline i NL
                   :: (if Binding.is_empty B then "note " else "note ")
-                  :: quote_space (Binding.name_of B) :: " = this"
+                  :: quote_space kws (Binding.name_of B) :: " = this"
                :: print i NL L)
         | print i _ ((_, ENDBLK) :: L) = newline (i-1) NL :: "}" :: print (i-1) NL L
-        | print i ik ((_, FIX vs) :: L) = newline i ik :: "fix " :: print_vars vs @ print i NL L
+        | print i ik ((_, FIX vs) :: L) = newline i ik :: "fix " :: print_vars kws vs @ print i NL L
         | print i ik ((_, ASSUME ss) :: L) =
-              newline i ik :: "assume " :: print_structured_statement ss
+              newline i ik :: "assume " :: print_structured_statement kws ss
             @ print_this_fact'asm (next_sss L)
             @ print i NL L
         | print i ik ((_, HAVE (ss, body)) :: L) =
-              newline i ik :: "have " :: print_structured_statement' ss
+              newline i ik :: "have " :: print_structured_statement' kws ss
             @ print (i+1) NL body @ print i NL L
         | print i ik ((_, THUS (ss, body)) :: L) =
-              newline i ik :: "thus " :: print_structured_statement' ss
+              newline i ik :: "thus " :: print_structured_statement' kws ss
             @ (if ss_has_macro ss
                then print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
                else [])
             @ print (i+1) NL body @ print i NL L
         | print i ik ((_, HENCE (ss, body)) :: L) =
-              newline i ik :: "hence " :: print_structured_statement' ss
+              newline i ik :: "hence " :: print_structured_statement' kws ss
             @ print (i+1) NL body @ print i NL L
         | print i ik ((_, SHOW (ss, body)) :: L) =
-              newline i ik :: "show " :: print_structured_statement' ss
+              newline i ik :: "show " :: print_structured_statement' kws ss
             @ (if ss_has_macro ss
                then print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
                else [])
             @ print (i+1) NL body @ print i NL L
         | print i ik ((_, CASE (B,(N,vs))) :: L) =
-            let val ab = print_attrbind' B
+            let val ab = print_attrbind' kws B
              in newline i ik :: (if null ab then ["case"] else "case " :: ab) @ " " ::
             (case vs of [] => [N]
                       | _ => "(" :: N ::
@@ -1866,14 +1866,15 @@ fun print_ast verbose kws =
               @ print i NL L
             end
         | print i ik ((_, ISAR_OBTAIN ((vs,ss), body)) :: L) =
-              newline i ik :: "obtain " :: print_vars vs
-            @ " where " :: print_structured_statement ss
+              newline i ik :: "obtain "
+           :: (if null vs then [] else print_vars kws vs @ [" where "])
+            @ print_structured_statement kws ss
             @ print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
             @ print (i+1) NL body
             @ print i NL L
         | print i ik ((_, ISAR_CONSIDER ((B, obt), body)) :: L) =
             newline i ik :: "consider " ::
-              implode_with " | " (map print_obtain obt)
+              implode_with " | " (map (print_obtain kws) obt)
             @ print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
             @ print (i+1) NL body
             @ (if Binding.is_empty B
@@ -1882,8 +1883,8 @@ fun print_ast verbose kws =
             
         | print i ik ((_, SUBGOAL ((a,b,(opt,c)), body)) :: L) =
             newline i ik :: "subgoal"
-         :: (if Binding.is_empty_atts a then [] else " " :: print_attrbind a)
-          @ (case b of SOME b' => "premises " ::  print_attrbind b'
+         :: (if Binding.is_empty_atts a then [] else " " :: print_attrbind kws a)
+          @ (case b of SOME b' => "premises " ::  print_attrbind kws b'
                      | NONE => [] )
           @ (if opt then " for ..." else " for ")
          :: implode_with " and " (map (fn (NONE  , _) => ["_"]
@@ -1964,14 +1965,14 @@ fun print_ast verbose kws =
            end
         | print i ik ((_, DEFINE (vs, astmt, fixes)) :: L) =
             newline i ik
-             :: "define " :: print_vars vs
-              @ " where " :: print_attr_statements astmt
-              @ print_for fixes
+             :: "define " :: print_vars kws vs
+              @ " where " :: print_attr_statements kws astmt
+              @ print_for kws fixes
               @ print i NL L
         | print i ik ((_, LET args) :: L) =
             newline i ik
             :: "let " :: implode_with " and " (map (fn (vs,tm) =>
-               implode_with " " (map (single o trim_markup) vs) @ " = " :: print_term tm
+               implode_with " " (map (single o trim_markup) vs) @ " = " :: print_term kws tm
              ) args)
             @ print i NL L
         | print i ik ((_, NOTATION (mode, xx)) :: L) =
@@ -1982,21 +1983,21 @@ fun print_ast verbose kws =
                             | (name, false) => [name, " output"]
                             | (name, _ )    => [name] )
               @ implode_with " and " (map (fn (tm,synt) =>
-                    print_term tm @ " (" :: print_mixfix synt @ [")"] ) xx)
+                    print_term kws tm @ " (" :: print_mixfix synt @ [")"] ) xx)
               @ print i NL L
         | print i ik ((_, INCLUDE names) :: L) =
               newline i ik
-           :: "include " :: implode_with " " (map (single o quote_space) names)
+           :: "include " :: implode_with " " (map (single o quote_space kws) names)
             @ print i NL L
         | print i ik ((_, INCLUDING names) :: L) =
-              newline i ik :: "including " :: implode_with " " (map (single o quote_space) names)
+              newline i ik :: "including " :: implode_with " " (map (single o quote_space kws) names)
             @ print i NL L
         | print i ik ((_, NEXT) :: L) =
                newline (i-1) ik :: "next"
             :: print_all_goals' ("goal:", "goals:") i (next_sss L)
              @ print i NL L
         | print i ik ((_, OPEN_MODULE (exprs, body)) :: L) =
-                newline i ik :: "interpret " :: print_locale_expr  exprs
+                newline i ik :: "interpret " :: print_locale_expr kws exprs
               @ print i NL body @ print i NL L
         | print i ik ((sss, NOTE notes) :: L) =
             newline i ik :: "note " :: implode_with " and " (
@@ -2004,12 +2005,12 @@ fun print_ast verbose kws =
                     let val XX = print_facts' sss facts
                      in if Binding.is_empty_atts B
                         then XX
-                        else print_attrbind B @ " = " :: XX
+                        else print_attrbind kws B @ " = " :: XX
                     end ) notes)
             @ print i NL L
         | print i ik ((_, MPROOF (pre, (_,ss), _, prf)) :: L) =
              newline i ik :: "mproof" :: print (i+1) NL pre
-              @ newline (i+1) NL :: "show " :: print_structured_statement' ss
+              @ newline (i+1) NL :: "show " :: print_structured_statement' kws ss
               @ print (i+2) NL prf
               @ newline i NL :: "mqed" :: print i NL L
         | print i ik ((_, BRANCH_SUBGOALS []) :: L) = print i ik L
@@ -2149,10 +2150,11 @@ val define_parser = (Parse.vars --| Parse.where_) -- Parse_Spec.statement -- Par
 val config_parser = Parse_Spec.name_facts >> NOTE
 fun include_parser C = Scan.repeat1 Parse.name >> C
 
-val obtain_parser =
+fun obtain_parser toks = (
      Scan.optional (Parse.vars --| Parse.where_) []
   -- (Parse_Spec.statement -- Parse_Spec.if_statement' -- Parse.for_fixes)
     >> (fn (BB, ((shows, assumes), fixes)) => ISAR_OBTAIN ((BB, (fixes, assumes, shows)), []) )
+ ) toks
 
 val consider_parser = Parse_Spec.obtains
       >> (ISAR_CONSIDER o rpair [] o pair Binding.empty)
@@ -2662,8 +2664,8 @@ fun print_mast kws print_response =
             val vs' = if null vs then []
                       else indent_of i :: "(*fixes variables "
                         :: implode_with' " and " (
-                              map (fn (v,T) => [v, " :: ", quote_space (pretty_ty ctxt T)]) vs) [" *)"]
-            val string_of = single o quote_space o trim_markup o Syntax.string_of_term ctxt
+                              map (fn (v,T) => [v, " :: ", quote_space kws (pretty_ty ctxt T)]) vs) [" *)"]
+            val string_of = single o quote_space kws o trim_markup o Syntax.string_of_term ctxt
             val hs' = if null hs then []
                       else indent_of i :: "(*introduces facts "
                         :: implode_with' " and " (
@@ -2711,10 +2713,10 @@ fun print_mast kws print_response =
               indent_of i
            :: "CONSIDER "
            :: implode_with " | " (
-                map (fn ([],ss) => print_structured_statement ss
-                      | (vs,ss) => print_vars vs
+                map (fn ([],ss) => print_structured_statement kws ss
+                      | (vs,ss) => print_vars kws vs
                                  @ " where "
-                                :: print_structured_statement ss
+                                :: print_structured_statement kws ss
                     ) branches)
             @ newline x (i+1) i body
             @ print i k L
@@ -2733,21 +2735,21 @@ fun print_mast kws print_response =
         | print i k ((x as (_, MDEFINE (vs, astmt, fixes))) :: L) =
               indent_of i
            :: "DEFINE "
-           :: print_vars vs
-            @ " where " :: print_attr_statements astmt
-            @ print_for fixes
+           :: print_vars kws vs
+            @ " where " :: print_attr_statements kws astmt
+            @ print_for kws fixes
             @ newline x i k L
         | print i k ((x as (_, MLET args)) :: L) =
               indent_of i
            :: "LET "
            :: implode_with " and " (map (fn (vs,tm) =>
-                implode_with " " (map (single o trim_markup) vs) @ (" = " :: print_term tm)
+                implode_with " " (map (single o trim_markup) vs) @ (" = " :: print_term kws tm)
               ) args)
             @ newline x i k L
         | print i k ((x as (_, MHAVE (ss, body))) :: L) =
               indent_of i
            :: "HAVE "
-           :: print_structured_statement' ss
+           :: print_structured_statement' kws ss
             @ newline x (i+1) i body
             @ print i k L
         | print i k ((x as (_, MNOTATION (mode, xx))) :: L) =
@@ -2759,7 +2761,7 @@ fun print_mast kws print_response =
                             | (name, false) => [name, " output"]
                             | (name, _ )    => [name] )
               @ implode_with " and " (map (fn (tm,synt) =>
-                    print_term tm @ " (" :: print_mixfix synt @ [")"] ) xx)
+                    print_term kws tm @ " (" :: print_mixfix synt @ [")"] ) xx)
             @ newline x i k L
         | print i k ((x as (_, MRULE (rules, wth))) :: L) =
               indent_of i
@@ -2771,19 +2773,19 @@ fun print_mast kws print_response =
               indent_of i
            :: "CHOOSE "
            :: implode_with " and " (map (fn (term, vs) =>
-                quote term :: print_vars vs
+                quote term :: print_vars kws vs
               ) terms)
             @ newline x i k L
         | print i k ((x as (_, MOPEN_MODULE (exprs, body))) :: L) =
               indent_of i :: "OPEN_MODULE "
-           :: print_locale_expr exprs
+           :: print_locale_expr kws exprs
             @ newline x (i+1) i body
             @ print i k L
         | print i k ((x as (_, MCFG_FACTS notes)) :: L) =
               indent_of i
            :: "CONFIG "
            :: implode_with " and " (
-                map (fn (B,facts) => print_attrbind B @ " = " :: print_facts kws facts) notes)
+                map (fn (B,facts) => print_attrbind kws B @ " = " :: print_facts kws facts) notes)
             @ newline x i k L
         | print i k ((x as (_, MCFG_BUNDL bundls)) :: L) =
               indent_of i

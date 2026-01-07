@@ -13,23 +13,23 @@ exception Translation_Fail of string
 exception Unsupported of string
 
 
-val quote_space : string -> string
+val quote_space : Keyword.keywords option -> string -> string
 val quote_fact  : Keyword.keywords option -> string -> string
 
 val print_mixfix : mixfix -> string list
-val print_var : binding * string option * mixfix -> bstring list
-val print_vars : (binding * string option * mixfix) list -> string list
-val print_for : (binding * string option * mixfix) list -> string list
+val print_var : Keyword.keywords option -> binding * string option * mixfix -> bstring list
+val print_vars : Keyword.keywords option -> (binding * string option * mixfix) list -> string list
+val print_for : Keyword.keywords option -> (binding * string option * mixfix) list -> string list
 
 val print_attr : Token.T list list -> string list
-val print_attrbind  : binding * Token.T list list -> string list
-val print_attrbind' : binding * Token.T list list -> string list
+val print_attrbind  : Keyword.keywords option -> binding * Token.T list list -> string list
+val print_attrbind' : Keyword.keywords option -> binding * Token.T list list -> string list
 val print_iv' : Facts.interval -> string list
 val print_iv : Facts.interval list option -> string list
 val print_factref : Keyword.keywords option -> Facts.ref -> string list
 val print_fact : Keyword.keywords option -> Facts.ref * Token.T list list -> string list
 val print_facts : Keyword.keywords option -> (Facts.ref * Token.T list list) list -> string list
-val print_term : string -> string list
+val print_term : Keyword.keywords option -> string -> string list
 val pretty_ty : Proof.context -> typ -> string
 
 
@@ -182,19 +182,25 @@ fun has_delimiter s =
   end
 
 val sys_keywords = Thy_Header.get_keywords @{theory}
-fun quote_space s = if has_delimiter s then quote s else s
-fun quote_fact keywords =
+fun quote_space kws s =
+  let val keywords = the_default sys_keywords kws
+   in if has_delimiter s orelse
+         Keyword.is_command keywords s orelse
+         Keyword.is_keyword keywords s
+      then quote s
+      else s
+  end
+
+fun quote_fact keywords s =
   let val keywords = the_default sys_keywords keywords
-      fun gen s =
-        if s <> "" andalso
-          (has_delimiter s orelse
-           not (Char.isAlpha (String.sub (s,0))) orelse
-           Keyword.is_command keywords s orelse
-           Keyword.is_keyword keywords s )
-        then quote s
-        else s
-  in gen
- end
+   in if s <> "" andalso
+        (has_delimiter s orelse
+         not (Char.isAlpha (String.sub (s,0))) orelse
+         Keyword.is_command keywords s orelse
+         Keyword.is_keyword keywords s )
+      then quote s
+      else s
+  end
 
 
 fun print_mixfix NoSyn = []
@@ -210,24 +216,24 @@ fun print_mixfix NoSyn = []
       [" (binder ", Input.string_of s, " [", string_of_int i, "] ", string_of_int j, ")"]
   | print_mixfix (Structure _) = [" (structure)"]
 
-fun print_var (v, SOME T, synt) = [Binding.name_of v, " :: ", quote_space (trim_markup T)] @ print_mixfix synt
-  | print_var (v, NONE  , synt) = [Binding.name_of v] @ print_mixfix synt
-fun print_vars vs = implode_with " and " (map print_var vs)
-fun print_for  [] = []
-  | print_for  vs = " for " :: print_vars vs
+fun print_var kws (v, SOME T, synt) = [Binding.name_of v, " :: ", quote_space kws (trim_markup T)] @ print_mixfix synt
+  | print_var _ (v, NONE  , synt) = [Binding.name_of v] @ print_mixfix synt
+fun print_vars kws vs = implode_with " and " (map (print_var kws) vs)
+fun print_for _ [] = []
+  | print_for kws vs = " for " :: print_vars kws vs
 
 fun print_attr [] = []
   | print_attr attrs =
         ["["]
       @ implode_with ", " (map (implode_with " " o (map (single o Token.unparse))) attrs)
       @ ["]"]
-fun print_attrbind (B,attrs) =
+fun print_attrbind kws (B,attrs) =
       if Binding.is_empty B
       then print_attr attrs
-      else quote_space (Binding.name_of B) :: print_attr attrs
-fun print_attrbind' (B,attrs) =
+      else quote_space kws (Binding.name_of B) :: print_attr attrs
+fun print_attrbind' kws (B,attrs) =
       if Binding.is_empty B andalso null attrs then []
-      else print_attrbind (B,attrs) @ [": "]
+      else print_attrbind kws (B,attrs) @ [": "]
 
 fun print_iv' (Facts.FromTo (i,j)) = [string_of_int i, "-", string_of_int j]
   | print_iv' (Facts.From i) = [string_of_int i, "-"]
@@ -240,7 +246,7 @@ fun print_factref kws (Facts.Named ((N,_),iv)) = quote_fact kws N :: print_iv iv
 fun print_fact kws (rf,attrs) = print_factref kws rf @ print_attr attrs
 fun print_facts kws = implode_with " " o map (print_fact kws)
 
-fun print_term tm = [quote_space (trim_markup tm)]
+fun print_term kws tm = [quote_space kws (trim_markup tm)]
 fun pretty_ty ctxt T = trim_markup (Syntax.string_of_typ ctxt T)
 
 
