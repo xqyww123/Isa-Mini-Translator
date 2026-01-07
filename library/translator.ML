@@ -394,6 +394,7 @@ fun annotate_facts_in_tac pp_name ctxt toks =
         | last_offset pos (_ :: L) = last_offset pos L
       val pos_annot = map_filter (
         fn fact as (Facts.Named ((_, pos), _), attrs) =>
+          \<^try>\<open>
             let val thms = Attrib.eval_thms ctxt [fact]
                 val lo = last_offset pos (flat attrs)
              in if lo = ~1
@@ -409,6 +410,7 @@ fun annotate_facts_in_tac pp_name ctxt toks =
                          else [])
                       @ ["*)"]))
             end
+            catch _ => NONE\<close>
           | _ => NONE
         ) (facts @ facts')
          |> sort (int_ord o apply2 fst)
@@ -1740,7 +1742,7 @@ fun print_calculation pp_names name state =
                |> filter_out is_dummy
       fun SOT pp_name = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
    in case props
-   of [prop] => map (fn pp => String.concat ["(*calculation: \<open>", SOT pp prop, "\<close>"]) pp_names
+   of [prop] => map (fn pp => String.concat ["(*calculation: \<open>", SOT pp prop, "\<close>*)"]) pp_names
     | [] => []
     | _ => map (fn pp => String.concat (["(*calculation:"]
                        @ flat (map_index (fn (i, term) =>
@@ -1809,6 +1811,19 @@ fun print_ast verbose kws =
             of (SOME pp, SOME s) => print_method (annotate_method pp (Proof.context_of s) m)
              | _ => print_method m
 
+      fun print_goal i sss =
+        case (sss, verbose)
+          of (SOME s, SOME pp) =>
+        let val ctxt = Proof.context_of s
+            val sot = REPL_Serialize.string_of_term pp (Context.Proof ctxt)
+            val goals = Thm.prems_of (#goal (Proof.goal s))
+         in case goals
+              of [] => []
+               | [goal] => [newline i NL, "(*goal: \<open>", sot goal, "\<close>*)"]
+               | [gs,_] => [newline i NL, "(*top goal: \<open>", sot gs, "\<close> and 1 goal remains*)"]
+               | gs :: gss => [newline i NL, "(*top goal: \<open>", sot gs, "\<close> and ", string_of_int (length gss), " goals remain*)"]
+        end
+          | _ => []
 
       fun print _ _ [] = []
         | print i ik ((sss, PROOF (tac, body)) :: L) =
@@ -1898,9 +1913,13 @@ fun print_ast verbose kws =
           @ " using" :: maps (maps (fn B => " " :: print_factref B) o #2) using
           @ " sorry\n" :: print L *)
         | print k ik ((_, DEFER i) :: L) =
-            newline k ik :: "defer " :: string_of_int i :: print i NL L
+               newline k ik :: "defer " :: string_of_int i
+            :: print_goal k (next_sss L)
+             @ print k NL L
         | print k ik ((_, PREFER i) :: L) =
-            newline k ik :: "prefer " :: string_of_int i :: print i NL L
+               newline k ik :: "prefer " :: string_of_int i
+            :: print_goal k (next_sss L)
+             @ print k NL L
         | print i ik ((sss, WITH facts) :: L) =
             newline i ik :: "with " :: print_facts' sss facts @ print i SP L
         | print i ik ((sss, FROM facts) :: L) =
@@ -1942,8 +1961,15 @@ fun print_ast verbose kws =
                                   | _ => ("apply ", print i NL L, true)
                     val tailx =
                           if show_goal andalso is_some goal
-                        then [newline i NL, "(*top goal: \<open>", the goal (), "\<close>*)"]
-                           @ tailx
+                        then case the goal ()
+                          of [] => tailx
+                           | [gs] => [newline i NL, "(*goal: \<open>", gs, "\<close>*)"]
+                                   @ tailx
+                           | [gs,_] => [newline i NL, "(*top goal: \<open>", gs, "\<close> and 1 goal remains*)"]
+                                     @ tailx
+                           | gs :: gss => [newline i NL, "(*top goal: \<open>", gs, "\<close> and ",
+                                           string_of_int (length gss), " goals remain*)"]
+                                        @ tailx
                         else tailx
                  in newline i ik
                 :: (if null using then [] else "using " :: print_facts kws using)
@@ -1958,8 +1984,8 @@ fun print_ast verbose kws =
                      val sot = REPL_Serialize.string_of_term (the verbose) (Context.Proof ctxt)
                  val goals = Thm.prems_of (#goal (Proof.goal s))
               in case goals
-                   of (goal :: _) => default (SOME (fn () => sot goal))
-                    | _ => default NONE
+                   of [] => default NONE
+                    | _ => default (SOME (fn () => map sot goals))
              end
             else default NONE
            end
@@ -2213,7 +2239,7 @@ val initial_parsers = Symtab.make [
   ("including",  include_parser INCLUDING),
 
   ("defer",      Scan.optional Parse.nat 1 >> DEFER),
-  ("prefer",     Scan.optional Parse.nat 1 >> DEFER),
+  ("prefer",     Scan.optional Parse.nat 1 >> PREFER),
   ("with",       facts (WITH o flat)),
   ("from",       facts (FROM o flat)),
   ("then",       Scan.succeed ISAR_THEN),
@@ -3932,8 +3958,9 @@ fun separate_prf try_pretty tail =
                       if i <= 1 then L @ [x] else x :: defer (i-1) L
              in sep L (defer i leaves)
             end
-        | sep ((_, PREFER i) :: L) leaves =
-            let val leaves' = nth leaves i :: take (i-1) leaves @ drop i leaves
+        | sep ((_, PREFER i') :: L) leaves =
+            let val i = i' -1
+                val leaves' = nth leaves i :: take i leaves @ drop (i+1) leaves
              in sep L leaves'
             end
         | sep ((ast' as (s, DOT)) :: L) leaves =
@@ -4051,7 +4078,8 @@ fun separate_tactics try_pretty = let
                   val use_raw = is_ind_opr L andalso is_conj_goal s
                   val roots = init_grdprf use_raw s
                   val tail = Unsynchronized.ref []
-                  val open_leaves = separate_prf try_pretty tail L roots
+                  val open_leaves = \<^try>\<open>separate_prf try_pretty tail L roots
+                                      catch _ => raise SKIP\<close>
                   val ret1 = case (open_leaves, roots)
                                of ([], _) => mk_branch_subgoals (map conclude_grdprf roots)
                                 | (_, [root]) =>
