@@ -1,4 +1,5 @@
 proof -
+  text "asdaada"
   assume Nv1_inter_E2_empty: "N\<^bsub>\<V>1\<^esub> \<inter> E\<^bsub>ES2\<^esub> = {}"
     and Nv2_inter_E1_empty: "N\<^bsub>\<V>2\<^esub> \<inter> E\<^bsub>ES1\<^esub> = {}"
 

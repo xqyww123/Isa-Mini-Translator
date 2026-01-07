@@ -10,7 +10,7 @@ section \<open>Linear Temporal Logic\<close>
 
 theory MS_Test_LTL
 imports
-  Main "HOL-Library.Omega_Words_Fun" MS_Translator
+  Main "HOL-Library.Omega_Words_Fun" Minilang_Translator.MS_Translator
 begin
 
 text \<open>This theory provides a formalisation of linear temporal logic. It provides three variants:
@@ -113,8 +113,8 @@ lemma ltl_WeakUntil_StrongRelease_con:
 lemma ltl_Release_StrongRelease_con:
   "\<xi> \<Turnstile>\<^sub>c \<phi> R\<^sub>c \<psi> \<longleftrightarrow> \<xi> \<Turnstile>\<^sub>c (\<phi> M\<^sub>c \<psi>) or\<^sub>c (G\<^sub>c \<psi>)"
   "\<xi> \<Turnstile>\<^sub>c \<phi> M\<^sub>c \<psi> \<longleftrightarrow> \<xi> \<Turnstile>\<^sub>c (\<phi> R\<^sub>c \<psi>) and\<^sub>c (F\<^sub>c \<phi>)"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
-(File.read (Path.explode "./Translator/t41.txt"))\<close>
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
+(File.read (Path.explode "/home/qiyuan/Current/MLML/contrib/Isa-Mini/translator/Test/t41.txt"))\<close>
 
 (*2 subgoals*)
  apply ((safe)[1])

@@ -71,6 +71,8 @@ datatype ast =
                   * Attrib.binding option
                   * (bool * (string option * Position.T) list) )
                 * (Proof.state option * ast) list
+  | UNKNOWN of Toplevel.transition * Token.src
+  | COMMENT of Token.src
 
 (* Shared *)
   | UNFOLD of fact list
@@ -144,6 +146,7 @@ type ret = (string * (AST * exn list)) list
 val print_AST : AST -> string
 
 val elaborate  : ret Unsynchronized.ref -> Toplevel.state * Token.src list -> ast'
+val elaborate_tactic : Toplevel.state * Token.src list -> ast'
 val translate' : ret Unsynchronized.ref -> Toplevel.state -> string -> ast'
 
 val anotate_types  : Toplevel.state * Token.src list -> ast'
@@ -154,7 +157,10 @@ val translate_m  : string list -> ret Unsynchronized.ref -> Toplevel.state * Tok
 val translate'm  : string list -> ret Unsynchronized.ref -> Toplevel.state -> string -> unit
 val translate'test : Toplevel.state -> string -> unit
 
-val print_ast  : bool (*use_mproof*) -> ast' -> string
+val print_all_goals : REPL_Serialize.pp_name list -> string * string -> int -> Proof.state -> string list
+val print_this_fact : REPL_Serialize.pp_name list -> Proof.state -> string list
+(* val print_calculation : REPL_Serialize.pp_name list -> Proof.state -> string list *)
+val print_ast  : REPL_Serialize.pp_name option -> ast' -> string
 val print_mast : bool (*prints response*) -> mast' -> string
 
 val parse_isar : Toplevel.state * Token.src list -> ast'
@@ -166,6 +172,8 @@ val facts_in_SH_return : string -> (Facts.ref * Token.src list) list (*using*)
 
 val case_parser : ast parser
 val msorry_printing : string Unsynchronized.ref
+
+val elaborate_tatic'test : REPL_Serialize.pp_name option -> Toplevel.state -> string -> string
 
 end
 
@@ -282,6 +290,36 @@ fun cuttoks parser toks =
    in (take (length toks - length toks') toks, toks')
   end
 
+local
+val arbitraryN = "arbitrary";
+val takingN = "taking";
+val ruleN = "rule";
+fun unless_more_args scan = Scan.unless (
+  ((Args.$$$ arbitraryN || Args.$$$ takingN || Args.$$$ Induct.typeN ||
+    Args.$$$ Induct.predN || Args.$$$ Induct.setN || Args.$$$ ruleN) -- Args.colon)) scan;
+val inst =  (Args.$$$ "_") >> K NONE || Parse.term >> SOME;
+
+fun named_rule k arg  =
+  (Args.$$$ k -- Args.colon) |-- Scan.repeat arg :|-- (fn _ => Scan.succeed []);
+
+val rule =
+  named_rule Induct.typeN Parse.typ ||
+  named_rule Induct.predN Parse.const ||
+  named_rule Induct.setN Parse.const ||
+  ((Args.$$$ ruleN -- Args.colon) |-- Parse.thms1)
+
+val taking = Scan.optional ((Args.$$$ takingN -- Args.colon) |--
+  Scan.repeat1 (unless_more_args inst)) [];
+
+val cases_rule = rule
+in
+val case_syntax = (Args.mode Induct.no_simpN) --
+        (Parse.and_list (Scan.repeat (unless_more_args inst)) -- Scan.option cases_rule) >>
+        (fn (_, (_, opt_rule)) => (the_default [] opt_rule, []))
+val induct_syntax = (Scan.repeat (unless_more_args inst) -- taking -- Scan.option rule >>
+        (fn ((insts, taking), opt_rule) => (the_default [] opt_rule, []) ))
+end
+
 in
 
 val where_parser = Parse.$$$ "where" |-- named_insts
@@ -289,6 +327,7 @@ val simp_parser = simp
 val auto_parser = auto
 val rule_tac_parser = Scan.option goal |-- Scan.option (cuttoks named_insts --| $$$ "in") -- thms
 val rule_parser = Scan.option (Args.parens Parse.nat) |-- thms
+
 
 fun tac_can_refine [] = NONE
   | tac_can_refine (tok :: toks) =
@@ -337,13 +376,55 @@ fun tac_can_refine [] = NONE
          | "cut_tac"   => rule_tac_parser toks |> fst |> snd |> rpair [] |> SOME
          | "assumption" => SOME ([], [])
          | "this"     => SOME ([], [])
+         | "cases"    => case_syntax toks |> fst |> SOME
+         | "induct"   => induct_syntax toks |> fst |> SOME
+         | "induction"=> induct_syntax toks |> fst |> SOME
          | _ => NONE )
 
 fun facts_in_tac toks =
       case tac_can_refine toks
         of SOME ret => ret
          | NONE => ([],[])
-      
+
+fun annotate_facts_in_tac pp_name ctxt toks =
+  let val (facts, facts') = facts_in_tac (toks @ [Token.eof])
+      val SOT = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt) o Thm.prop_of
+      fun last_offset pos [] = the_default ~1 (Position.end_offset_of pos)
+        | last_offset _ [tok] = the_default ~1 (Position.end_offset_of (Token.pos_of tok))
+        | last_offset pos (_ :: L) = last_offset pos L
+      val pos_annot = map_filter (
+        fn fact as (Facts.Named ((_, pos), _), attrs) =>
+            let val thms = Attrib.eval_thms ctxt [fact]
+                val lo = last_offset pos (flat attrs)
+             in if lo = ~1
+             then NONE
+             else case thms
+             of [] => NONE
+              | [thm] => SOME (lo, String.concat ["(*\<open>", SOT thm, "\<close>*)"])
+              | _ => SOME (lo, String.concat ("(*" :: implode_with " " (map (fn thm =>
+                            ["\<open>", SOT thm, "\<close>"]
+                     ) (take 12 thms))
+                      @ (if length thms > 12
+                         then [" and more ", string_of_int (length thms - 12), " facts"]
+                         else [])
+                      @ ["*)"]))
+            end
+          | _ => NONE
+        ) (facts @ facts')
+         |> sort (int_ord o apply2 fst)
+      val mk_comment = Token.explode Keyword.empty_keywords Position.none
+      fun annotate toks [] = toks
+        | annotate [] ((_, cmt) :: L) = mk_comment cmt @ annotate [] L
+        | annotate (TT as tok :: toks) (LL as (lo, cmt) :: L) =
+            case Position.offset_of (Token.pos_of tok)
+              of NONE => tok :: annotate toks LL
+               | SOME j => if lo < j
+                           then mk_comment cmt @ annotate TT L
+                           else tok :: annotate toks LL
+   in try (annotate toks) pos_annot
+   |> the_default toks
+  end
+
 (*
 and facts_in_facts facts
       = merge_facts (facts :: map (merge_facts o map facts_in_attr' o snd) facts)
@@ -362,6 +443,14 @@ and facts_in_attr' tok = facts_in_attr (tok @ [Token.eof])
 fun facts_in_method (Method.Source toks) = facts_in_tac (toks @ [Token.eof])
   | facts_in_method (Method.Combinator (_, _, tacs)) = merge_facts2 (map facts_in_method tacs)
   | facts_in_method _ = ([], [])
+
+fun annotate_method pp_name ctxt =
+  let val annotate_toks = annotate_facts_in_tac pp_name ctxt
+      fun annotate (Method.Source toks) = Method.Source (annotate_toks toks)
+        | annotate (Method.Combinator (a,b,tacs)) = Method.Combinator (a,b, map annotate tacs)
+        | annotate basic = basic
+   in annotate
+  end
 
 end
 
@@ -513,6 +602,8 @@ datatype ast =
                   * Attrib.binding option
                   * (bool * (string option * Position.T) list) )
                 * (Proof.state option * ast) list
+  | UNKNOWN of Toplevel.transition * Token.src
+  | COMMENT of Token.src
 
 (* Shared *)
   | UNFOLD of fact' list
@@ -707,7 +798,6 @@ fun segment_pass F =
            | [] => []
   in pass o F
  end
-
 
 fun linear_pass scope F =
   let fun set_scope ast H =
@@ -1428,7 +1518,10 @@ fun print_method (Method.Source toks) = print_toks toks
       else error "BUG Fail to print internal methods"
   | print_method (Method.Combinator _) = error "BUG Bad method combinator"
 
-
+fun token_has_single_word [tok] = true
+  | token_has_single_word _  = false
+fun method_has_single_word (Method.Source toks) = token_has_single_word toks
+  | method_has_single_word _ = false
 
 fun print_ty_raw' (Type (N, TS)) = ["("] @ maps print_ty_raw' TS @ [") ", N]
   | print_ty_raw' (TFree (N, _)) = [N]
@@ -1551,6 +1644,12 @@ fun print_structured_statement' ((vars, assms, show) : structured_statement') =
         @ (if null assms then [] else " if " :: print_attr_statements assms)
         @ print_for vars
 
+fun attr_statement_has_macro (tm, _) =
+      String.isSubstring "?case" tm orelse String.isSubstring "?thesis" tm
+fun ss_has_macro ((_, assms, show) : structured_statement') =
+      exists (exists attr_statement_has_macro o snd) assms orelse
+      exists (exists attr_statement_has_macro o snd) show
+
 (*
 fun print_structured_statement' ((vars, assms, show) : structured_statement') =
         print_structured_statement (vars, map snd assms, show)
@@ -1602,56 +1701,185 @@ fun mk_ident' i = Byte.bytesToString (Word8Vector.tabulate (2*i, K space_word))
 val indents = Vector.tabulate (10, fn i => mk_ident' i)
 fun indent_of n = if n < 10 then Vector.sub (indents, n) else mk_ident' n
 
+fun print_all_goals pp_names (prompt, prompts) indent state =
+  let val ctxt = Proof.context_of state
+      val goals = Thm.prems_of (#goal (Proof.goal state))
+   in map (fn pp_name =>
+        let val SOT = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
+            val s = case goals
+                      of [goal] => ["(*", prompt, " \<open>", SOT goal, "\<close>*)"]
+                       | _ => "(*" :: prompts ::
+                          flat (map_index (fn (i, goal) =>
+                            [newline_indent_of (indent+1), string_of_int (i+1), ". \<open>", SOT goal, "\<close>"]) goals)
+                          @ ["*)"]
+         in String.concat s
+        end) pp_names
+  end
 
-fun print_ast use_mproof =
-  let val mproof = if use_mproof then "mproof" else "proof (-)"
-      val mqed = if use_mproof then "mqed" else "qed"
-      datatype mode = NL | SP | ST
+fun print_this_fact pp_names state =
+  let val ctxt = Proof.context_of state
+      val this = try Proof.the_facts state |> the_default [] |> map Thm.prop_of
+      fun SOT pp_name = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
+   in case this
+   of [term] => map (fn pp => String.concat ["(*\<open>", SOT pp term, "\<close>*)"]) pp_names
+    | [] => []
+    | terms => map (fn pp =>
+                   String.concat (["(*"]
+                 @ implode_with " " (map (fn term => ["\<open>", SOT pp term, "\<close>"]) terms)
+                 @ ["*)"])) pp_names
+  end
+
+
+fun is_dummy (Const(\<^const_name>\<open>Pure.term\<close>, _) $ _) = true
+  | is_dummy tm = Term.is_dummy_pattern tm
+
+fun print_calculation pp_names name state =
+  let val ctxt = Proof.context_of state
+      val props = Proof_Context.get_thms ctxt name
+               |> map Thm.prop_of
+               |> filter_out is_dummy
+      fun SOT pp_name = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
+   in case props
+   of [prop] => map (fn pp => String.concat ["(*calculation: \<open>", SOT pp prop, "\<close>"]) pp_names
+    | [] => []
+    | _ => map (fn pp => String.concat (["(*calculation:"]
+                       @ flat (map_index (fn (i, term) =>
+                                  ["\n  \<open>", SOT pp term, "\<close>"]) props)
+                       @ ["*)"])) pp_names
+  end
+
+fun print_ast verbose =
+  let datatype mode = NL | SP | ST
       fun newline i NL = newline_indent_of i
         | newline i ST = indent_of i
         | newline _ SP = " "
-      fun print _ _ [] = ["\n"]
-        | print i ik ((_, PROOF (tac, body)) :: L) =
-              newline i ik :: "proof (" :: print_method tac @ ")" :: print (i+1) NL body
+
+      fun next_sss [] = NONE
+        | next_sss ((sss, _) :: _) = sss
+      fun may_new_line _ [] = []
+        | may_new_line i L = newline i NL :: L
+      fun may_space [] = []
+        | may_space L = " " :: L
+      fun print_all_goals' prompts i sss =
+            case (verbose, sss)
+              of (SOME pp_name, SOME s) => may_new_line i (print_all_goals [pp_name] prompts i s)
+               | _ => []
+      fun print_this_fact'case sss =
+            case (verbose, sss)
+              of (SOME pp_name, SOME s) => (
+                    case print_this_fact [pp_name] s
+                      of [] => [" (*no hyothesis introduced yet*)"]
+                       | L => " " :: L)
+               | _ => []
+      fun print_this_fact'asm sss =
+            case (verbose, sss)
+              of (SOME _, SOME s) => may_space (print_this_fact ["type_sort"] s)
+               | _ => []
+      fun print_facts' sss facts =
+          case (verbose, sss)
+            of (SOME pp, SOME s) =>
+                let val ctxt = Proof.context_of s
+                    fun SOT pp_name = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
+                 in implode_with " " (map (fn fact =>
+                  let val props = Attrib.eval_thms ctxt [fact]
+                               |> map Thm.prop_of
+                      val _ = if length props > 10 then () else ()
+                   in print_fact fact @
+                    (case props
+                       of [] => []
+                        | _ => " (*" ::
+                               Minilang_Aux.implode_with " " (map (fn prop =>
+                                  ["\<open>", SOT pp prop, "\<close>"]) (take 12 props))
+                             @ (if length props > 12
+                                then [" and more ", string_of_int (length props - 12), " facts"]
+                                else [])
+                             @ ["*)"])
+                  end) facts)
+                end
+             | _ => print_facts facts
+      fun print_calculation' name sss =
+          case (verbose, sss)
+            of (SOME pp, SOME s) => (
+                case print_calculation [pp] name s
+                  of [] => []
+                   | L => " " :: L)
+             | _ => []
+      fun print_method' sss m =
+          case (verbose, sss)
+            of (SOME pp, SOME s) => print_method (annotate_method pp (Proof.context_of s) m)
+             | _ => print_method m
+
+
+      fun print _ _ [] = []
+        | print i ik ((sss, PROOF (tac, body)) :: L) =
+              newline i ik :: "proof (" :: print_method' sss tac @ ")"
+           :: print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
+            @ print (i+1) NL body
             @ print i NL L
-        | print i _ ((_, QED (tac, _)) :: L) =
+        | print i _ ((sss, QED (tac, _)) :: L) =
             newline (i-1) NL :: "qed" ::
-            (case tac of SOME tac' => " ("::print_method tac'@[")"] | _ => [])
+            (case tac
+               of SOME tac' => " ("::print_method' sss tac'@ ")"
+                            :: print_all_goals' ("solved the remaining goal:", "solves the remaining goals:")
+                                                (i-1) sss
+                | _ => [])
             @ print i NL L
         | print i ik ((_, BRCBLK ((B,_), body)) :: L) =
               newline i ik :: "{" :: print (i+1) NL body
-            @ newline i NL :: "note " :: quote_space (Binding.name_of B) :: " = this"
-           :: print i NL L
+            @ (if Binding.is_empty B
+               then print i NL L
+               else newline i NL
+                  :: (if Binding.is_empty B then "note " else "note ")
+                  :: quote_space (Binding.name_of B) :: " = this"
+               :: print i NL L)
         | print i _ ((_, ENDBLK) :: L) = newline (i-1) NL :: "}" :: print (i-1) NL L
         | print i ik ((_, FIX vs) :: L) = newline i ik :: "fix " :: print_vars vs @ print i NL L
         | print i ik ((_, ASSUME ss) :: L) =
-              newline i ik :: "assume " :: print_structured_statement ss @ print i NL L
+              newline i ik :: "assume " :: print_structured_statement ss
+            @ print_this_fact'asm (next_sss L)
+            @ print i NL L
         | print i ik ((_, HAVE (ss, body)) :: L) =
               newline i ik :: "have " :: print_structured_statement' ss
-            @ print (i-1) NL body @ print i NL L
+            @ print (i+1) NL body @ print i NL L
         | print i ik ((_, THUS (ss, body)) :: L) =
               newline i ik :: "thus " :: print_structured_statement' ss
+            @ (if ss_has_macro ss
+               then print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
+               else [])
             @ print (i+1) NL body @ print i NL L
         | print i ik ((_, HENCE (ss, body)) :: L) =
               newline i ik :: "hence " :: print_structured_statement' ss
             @ print (i+1) NL body @ print i NL L
         | print i ik ((_, SHOW (ss, body)) :: L) =
               newline i ik :: "show " :: print_structured_statement' ss
+            @ (if ss_has_macro ss
+               then print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
+               else [])
             @ print (i+1) NL body @ print i NL L
         | print i ik ((_, CASE (B,(N,vs))) :: L) =
-              newline i ik :: "case " :: print_attrbind' B @ " " ::
+            let val ab = print_attrbind' B
+             in newline i ik :: (if null ab then ["case"] else "case " :: ab) @ " " ::
             (case vs of [] => [N]
-                      | _ => " (" :: N ::
+                      | _ => "(" :: N ::
                              maps (fn SOME N => [" ",N] | NONE => ["_"]) vs @ [")"]
-            ) @ print i NL L
+            ) @ print_this_fact'case (next_sss L)
+              @ print i NL L
+            end
         | print i ik ((_, ISAR_OBTAIN ((vs,ss), body)) :: L) =
               newline i ik :: "obtain " :: print_vars vs
             @ " where " :: print_structured_statement ss
-            @ print (i+1) NL body @ print i NL L
+            @ print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
+            @ print (i+1) NL body
+            @ print i NL L
         | print i ik ((_, ISAR_CONSIDER ((B, obt), body)) :: L) =
             newline i ik :: "consider " ::
-            implode_with " | " (map print_obtain obt) @ print (i+1) NL body
-            @ newline i NL :: "note " :: Binding.name_of B :: " = this" :: print i NL L
+              implode_with " | " (map print_obtain obt)
+            @ print_all_goals' ("goal:", "goals:") (i+1) (next_sss body)
+            @ print (i+1) NL body
+            @ (if Binding.is_empty B
+               then print i NL L
+               else newline i NL :: "note " :: Binding.name_of B :: " = this" :: print i NL L)
+            
         | print i ik ((_, SUBGOAL ((a,b,(opt,c)), body)) :: L) =
             newline i ik :: "subgoal"
          :: (if Binding.is_empty_atts a then [] else " " :: print_attrbind a)
@@ -1662,8 +1890,8 @@ fun print_ast use_mproof =
                                         | (SOME s, _) => [s] ) c)
           @ print (i+1) NL body
           @ print i NL L
-        | print i ik ((_, USING facts) :: L) =
-            newline i ik :: "using " :: print_facts facts @ print i SP L
+        | print i ik ((sss, USING facts) :: L) =
+            newline i ik :: "using " :: print_facts' sss facts @ print i SP L
 (*        | print ((_, MCALCULATION (B, goal, using)) :: L) =
             "have " :: quote_space (Binding.name_of B) :: ": " :: print_term goal
           @ " using" :: maps (maps (fn B => " " :: print_factref B) o #2) using
@@ -1672,35 +1900,68 @@ fun print_ast use_mproof =
             newline k ik :: "defer " :: string_of_int i :: print i NL L
         | print k ik ((_, PREFER i) :: L) =
             newline k ik :: "prefer " :: string_of_int i :: print i NL L
-        | print i ik ((_, WITH facts) :: L) =
-            newline i ik :: "with " :: implode_with " " (map print_fact facts) @ print i SP L
-        | print i ik ((_, FROM facts) :: L) =
-            newline i ik :: "from " :: implode_with " " (map print_fact facts) @ print i SP L
+        | print i ik ((sss, WITH facts) :: L) =
+            newline i ik :: "with " :: print_facts' sss facts @ print i SP L
+        | print i ik ((sss, FROM facts) :: L) =
+            newline i ik :: "from " :: print_facts' sss facts @ print i SP L
         | print i ik ((_, ISAR_THEN) :: L) =
             newline i ik :: "then" :: print i SP L
-        | print i ik ((_, ISAR_BY ((tac1, tac2), _)) :: L) =
-            newline i ik :: "by (" :: print_method tac1 @ ") " ::
-              (case tac2 of SOME tac => "("::print_method tac @ [")"] | _ => [])
+        | print i ik ((sss, ISAR_BY ((tac1, tac2), _)) :: L) =
+            newline i ik :: "by (" :: print_method' sss tac1 @ ") " ::
+              (case tac2 of SOME tac => "("::print_method' sss tac @ [")"] | _ => [])
             @ print i NL L
-        | print i ik ((_, APPLY_END tac) :: L) =
-            newline i ik :: "apply_end (" :: print_method tac @ ")" :: print i NL L
+        | print i ik ((sss, APPLY_END tac) :: L) =
+            newline i ik :: "apply_end (" :: print_method' sss tac @ ")" :: print i NL L
         | print i ik ((_, DONE) :: L) = newline i ik :: "done" :: print i NL L
         | print i _ ((_, DDOT) :: L) = newline i SP :: ".." :: print i NL L
         | print i _ ((_,  DOT) :: L) = newline i SP :: "."  :: print i NL L
         | print i ik ((_, ALSO _) :: L) =
-            newline i ik :: "also" :: print i SP L
+               newline i ik :: "also"
+            :: print_calculation' "calculation" (next_sss L)
+             @ print i SP L
         | print i ik ((_, FINALLY _) :: L) =
-            newline i ik :: "finally" :: print i SP L
+               newline i ik :: "finally"
+            :: print_calculation' "this" (next_sss L)
+             @ print i SP L
         | print i ik ((_, MOREOVER) :: L) =
             newline i ik :: "moreover" :: print i SP L
         | print i ik ((_, ULTIMATELY _) :: L) =
             newline i ik :: "ultimately" :: print i SP L
-        | print i ik ((_, UNFOLD facts) :: L) =
-            newline i ik :: "unfolding " :: implode_with " " (map print_fact facts) @ print i NL L
-        | print i ik ((_, TACTIC (tac, (using, _), _)) :: L) =
-            newline i ik
-            :: (if null using then [] else "using " :: print_facts using)
-            @ "apply (" :: print_method tac @ ")" :: print i NL L
+        | print i ik ((sss, UNFOLD facts) :: L) =
+              newline i ik :: "unfolding " :: implode_with " " (map print_fact facts)
+            @ print_all_goals' ("goal:", "goals:") i (next_sss L)
+            @ print i NL L
+        (*WARNING! May disable this*)
+        | print i ik ((sss, TACTIC (tac, (using, _), _)) :: L) =
+          let fun default goal =
+                let val (cmd, tailx, show_goal) =
+                          case L of [(_, DOT)] => ("by ", [], false)
+                                  | [] => ("apply ", print i NL L, false)
+                                  | (_, BRANCH_SUBGOALS _) :: _ => ("apply ", print i NL L, false)
+                                  | _ => ("apply ", print i NL L, true)
+                    val tailx =
+                          if show_goal andalso is_some goal
+                        then [newline i NL, "(*top goal: \<open>", the goal (), "\<close>*)"]
+                           @ tailx
+                        else tailx
+                 in newline i ik
+                :: (if null using then [] else "using " :: print_facts using)
+                @ cmd :: (
+                  if method_has_single_word tac
+                  then print_method' sss tac @ tailx
+                  else "(" :: print_method' sss tac @ ")" :: tailx )
+                end
+           in if is_some verbose
+            then let val s = the sss
+                     val ctxt = Proof.context_of s
+                     val sot = REPL_Serialize.string_of_term (the verbose) (Context.Proof ctxt)
+                 val goals = Thm.prems_of (#goal (Proof.goal s))
+              in case goals
+                   of (goal :: _) => default (SOME (fn () => sot goal))
+                    | _ => default NONE
+             end
+            else default NONE
+           end
         | print i ik ((_, DEFINE (vs, astmt, fixes)) :: L) =
             newline i ik
              :: "define " :: print_vars vs
@@ -1731,28 +1992,65 @@ fun print_ast use_mproof =
               newline i ik :: "including " :: implode_with " " (map (single o quote_space) names)
             @ print i NL L
         | print i ik ((_, NEXT) :: L) =
-            newline i ik :: "next" :: print i NL L
+               newline (i-1) ik :: "next"
+            :: print_all_goals' ("goal:", "goals:") i (next_sss L)
+             @ print i NL L
         | print i ik ((_, OPEN_MODULE (exprs, body)) :: L) =
                 newline i ik :: "interpret " :: print_locale_expr  exprs
               @ print i NL body @ print i NL L
-        | print i ik ((_, NOTE notes) :: L) =
+        | print i ik ((sss, NOTE notes) :: L) =
             newline i ik :: "note " :: implode_with " and " (
-                map (fn (B,facts) => print_attrbind B @ " = " :: print_facts facts) notes)
+                map (fn (B,facts) =>
+                    let val XX = print_facts' sss facts
+                     in if Binding.is_empty_atts B
+                        then XX
+                        else print_attrbind B @ " = " :: XX
+                    end ) notes)
             @ print i NL L
         | print i ik ((_, MPROOF (pre, (_,ss), _, prf)) :: L) =
-             newline i ik :: mproof :: print (i+1) NL pre
+             newline i ik :: "mproof" :: print (i+1) NL pre
               @ newline (i+1) NL :: "show " :: print_structured_statement' ss
               @ print (i+2) NL prf
-              @ newline i NL :: mqed :: print i NL L
+              @ newline i NL :: "mqed" :: print i NL L
         | print i ik ((_, BRANCH_SUBGOALS []) :: L) = print i ik L
         | print i ik ((_, BRANCH_SUBGOALS [body]) :: L) = print i ik body @ print i NL L
-        | print i _  ((_, BRANCH_SUBGOALS bodys) :: L) =
+        | print i ik  ((sss, BRANCH_SUBGOALS bodys) :: L) =
+            if length bodys <= 1
+            then print i ik (flat bodys @ L)
+            else if is_some verbose andalso is_some sss
+            then let val s = the sss
+                     val ctxt = Proof.context_of s
+                     val sot = REPL_Serialize.string_of_term (the verbose) (Context.Proof ctxt)
+                 val goals = take (length bodys) (Thm.prems_of (#goal (Proof.goal s)))
+                 val goals_s =
+                    newline i NL :: "(*goals:" ::
+                      flat (map_index (fn (j,goal) =>
+                        [newline (i+1) NL, string_of_int (j+1), ". \<open>", sot goal, "\<close>"]) goals)
+                      @ [newline i NL, "discuss goal 1*)"]
+
+                 fun implode_with_i _ _ [] = []
+                   | implode_with_i _ _ [x] = x
+                   | implode_with_i i s (h::L) = h @ s i :: implode_with_i (i+1) s L
+              in goals_s
+               @ implode_with_i 2
+                    (fn k => String.concat [newline i NL, "(*discuss goal ", string_of_int k,"*)"])
+                    (map (print (i+1) NL) bodys)
+               @ newline i NL :: "(*proven " :: string_of_int (length bodys) :: " subgoals*)"
+              :: print i NL L
+             end
+            else
                newline i NL :: "(*" :: string_of_int (length bodys) :: " subgoals*)"
-            :: implode_with (newline i NL ^ "(*NEXT*)")
+            :: implode_with (newline i NL ^ "(*next*)")
                             (map (print (i+1) NL) bodys)
              @ newline i NL :: "(*end " :: string_of_int (length bodys) :: " subgoals*)"
             :: print i NL L
         | print i ik ((_, SORRY) :: L) = newline i ik :: "sorry" :: print i NL L
+        | print i ik ((_, UNKNOWN (_, toks)) :: L) =
+               newline i ik :: print_toks toks
+             @ print i NL L
+        | print i ik ((_, COMMENT toks) :: L) =
+               newline i ik :: print_toks toks
+             @ print i NL L
 
    in print 0 ST
   end
@@ -1883,6 +2181,10 @@ in
 val case_parser = case_parser
 val restore_case = restore_case
 
+fun unknown_parser thy toks =
+  (UNKNOWN ( Outer_Syntax.parse_span thy (fn _ => error "BUG") toks
+           , toks), [])
+
 val initial_parsers = Symtab.make [
 
   ("apply",      tactic_parser (fn m => TACTIC (m, ([], []), NONE))),
@@ -1937,8 +2239,9 @@ val initial_parsers = Symtab.make [
   ("also",       facts' (ALSO o flat)),
   ("finally",    facts' (FINALLY o rpair false o flat)),
   ("moreover",   Scan.succeed MOREOVER),
-  ("ultimately", Scan.succeed (ULTIMATELY false)),
+  ("ultimately", Scan.succeed (ULTIMATELY false))
 
+(* ,
   ("print_trans_rules", ignore),
   ("help",       ignore),
   ("print_commands", ignore),
@@ -1976,14 +2279,14 @@ val initial_parsers = Symtab.make [
   ("print_state",              ignore),
   ("welcome",                  ignore),
   ("text", ignore),
-  ("txt" , ignore)
+  ("txt" , ignore) *)
 ]
 
 val threshold = Time.fromSeconds 1
 val default_time = Time.fromSeconds 120
 fun tac_time t =
   let val t' = if t <= threshold then threshold else t
-   in Time.fromMilliseconds (Time.toMilliseconds t' * 3)
+   in Time.fromMilliseconds (Time.toMilliseconds t' * 3 + 5000)
   end
 
 val is_single_prf_mode =
@@ -2103,7 +2406,14 @@ fun eval_single (CASE arg) s
   | eval_single (FINALLY (rules, _)) s =
       Calculation.finally_cmd (case rules of [] => NONE | _ => SOME rules) false s
         |> Seq.the_result "BUG IL#R&"
-  
+  | eval_single MOREOVER s = Calculation.moreover false s
+  | eval_single (ULTIMATELY _) s = Calculation.ultimately false s
+  | eval_single (UNKNOWN (tr, _)) s =
+          Toplevel.make_state (SOME (Proof.theory_of s))
+       |> Toplevel.command_exception false (Toplevel.theory_to_proof (K s) Toplevel.empty)
+       |> Toplevel.command_exception false tr
+       |> Toplevel.proof_of
+  | eval_single (COMMENT _) s = s
 
 
 fun mk_with_clause ctxt (wth, wthout) =
@@ -2161,6 +2471,7 @@ fun set_time (TACTIC (a,b,t0)) = SOME (t0, fn t => TACTIC (a,b,SOME t))
   | set_time (QED (a,t0))      = SOME (t0, fn t => QED (a,SOME t))
   | set_time _ = NONE
 
+fun eval_gen use_msorry = let
 fun DO s ast F L  =
   let val set = set_time ast
       val (ast', s') = case set
@@ -2237,12 +2548,17 @@ and eval s [] = (s, [])
        in eval s' L
        |> apsnd (prepend (SOME s, TACTIC (m, u, SOME t)))
       end handle ESORRY E =>
-        let val facts = collect_facts L
-         in rescue (merge_facts2 [u, facts]) s L E
-        end )
+        if use_msorry then
+          let val facts = collect_facts L
+           in rescue (merge_facts2 [u, facts]) s L E
+          end
+        else raise ESORRY E )
   | eval s ((_, x) :: L) =
       ( DO s x (eval_single x) L
-       handle ESORRY E => rescue (collect_facts L) s L E)
+       handle ESORRY E =>
+        if use_msorry
+        then rescue (collect_facts L) s L E
+        else raise ESORRY E )
 and rescue (using, not_using) s L E =
   if is_single_prf_mode L
   then let val ctxt = Proof.context_of s
@@ -2254,6 +2570,11 @@ and rescue (using, not_using) s L E =
     in (s'', [(SOME s, sorry), (SOME s', DOT)])
    end
   else raise E
+in eval
+end
+
+val eval = eval_gen true
+val eval_no_sorry = eval_gen false
 
 fun DO s ast F L  =
   let exception RESCUE of exn in
@@ -2526,17 +2847,22 @@ datatype blk_behv = OPEN_BLK
 val initial_state = Thread_Data.var ()
 
 val parse_isar : Toplevel.state * Token.src list -> ast' =
-  let fun chk_end (ret, []) = ret
-        | chk_end (ret, [eof]) =
+  let fun chk_end' (ret, []) = ret
+        | chk_end' (ret, [eof]) =
             if Token.is_eof eof then ret else raise Parse_Fail [[eof]]
-        | chk_end (_, src) = raise Parse_Fail [src]
+        | chk_end' (_, src) = raise Parse_Fail [src]
+      fun chk_end (aaa, toks) = chk_end' (aaa, filter Token.is_proper toks)
 
       fun parse (_, []) = raise Parse_Fail []
         | parse (s, src::srcs) =
-        let val (name,_) = Token.name_of_src src
-            val parser0 = case Symtab.lookup initial_parsers name
-                            of SOME parser => parser
-                             | NONE => raise Unsupported name
+        let val _ = if (case Token.kind_of (hd src) of Token.Comment _ => true | _ => false) then () else ()
+            val (name,_) = Token.name_of_src src
+            val parser0 =
+                case Token.kind_of (hd src)
+                  of Token.Comment _ => (fn toks => (COMMENT (fst (split_last toks)), []))
+                   | _ => case Symtab.lookup initial_parsers name
+                            of SOME parser => parser o tl
+                             | NONE => unknown_parser (Toplevel.theory_of s) o fst o split_last
             val tr = Outer_Syntax.parse_span (Toplevel.theory_of s) (fn _ => error "BUG") src
             val s' = Toplevel.command_exception false tr s
 
@@ -2552,7 +2878,7 @@ val parse_isar : Toplevel.state * Token.src list -> ast' =
                in parse s_srcs'' |> apfst (fn L => F ast :: L)
               end
 
-         in case chk_end ( parser (tl src @ [Token.eof])
+         in case chk_end ( parser (src @ [Token.eof])
                         |> apfst (pair (SOME (Toplevel.proof_of s))))
          of ast as (_, DONE) => ([ast], (s', srcs))
           | ast as (_, DDOT) => ([ast], (s', srcs))
@@ -3222,7 +3548,44 @@ val clean_tac_pass = linear_pass NONE (
    | L => L
   )
 
-val norm_prf1 = linear_pass NONE (
+val norm_prf_pretrain = linear_pass NONE (
+  fn org as (s, PROOF (tac, prf)) :: L =>
+      if is_no_tac tac
+      then org
+      else (s, TACTIC (tac, ([],[]), NONE))
+        :: (Option.map (Proof.refine_singleton tac) s, PROOF (no_tac, prf))
+        :: L
+   | (s, ISAR_BY ((tac, NONE), time)) :: L =>
+        (s, TACTIC (tac, ([],[]), time))
+     :: (Option.map (eval_single (TACTIC (tac, ([],[]), NONE))) s, DOT)
+     :: L
+   | (s, ISAR_BY ((tac, SOME tac'), time)) :: L =>
+      let val s1 = Option.map (eval_single (TACTIC (tac, ([],[]),time))) s
+          val s2 = Option.map (eval_single (TACTIC (tac',([],[]),time))) s1
+       in (s, TACTIC (tac,([],[]),time)) :: (s1, TACTIC (tac',([],[]),time)) :: (s2, DOT) :: L
+      end
+   | (s, APPLY_END tac) :: L =>
+        (s, TACTIC (tac,([],[]),NONE))
+     :: (Option.map (eval_single (TACTIC (tac,([],[]),NONE))) s, DOT)
+     :: L
+   | (s, DONE) :: L =>
+     (s, DOT) :: L
+   | (s, DDOT) :: L =>
+        (s, TACTIC (standard_tac,([],[]),NONE))
+     :: (Option.map (eval_single (TACTIC (standard_tac,([],[]),NONE))) s, DOT)
+     :: L
+   | L => L)
+
+val restore_prf_pretrain = linear_pass NONE (
+    fn org as (s, TACTIC (tac, ([],[]), _)) :: (_, PROOF (tac', prf)) :: L =>
+        if is_no_tac tac'
+        then (s, PROOF (tac, prf)) :: L
+        else org
+     | L => L
+  )
+
+
+val norm_prf0 = linear_pass NONE (
   fn org as (s, PROOF (tac, prf)) :: L =>
       if is_no_tac tac
       then org
@@ -3254,6 +3617,8 @@ val norm_prf1 = linear_pass NONE (
        else L
      end
    | L => L)
+
+val norm_prf1 = norm_prf0
 #> linear_pass NONE (recursive (
   fn (s, USING facts1) :: (_, USING facts2) :: L =>
      (s, USING (merge (fact'_eq (Proof.context_of (the s))) (facts2, facts1))) :: L
@@ -3360,6 +3725,18 @@ fun conclude_grdprf tree =
      | SOME (GRDTREE (prfs, [child]))  => prfs @ conclude_grdprf child
      | SOME (GRDTREE (prfs, children)) => prfs @ [(NONE, BRANCH_SUBGOALS (map conclude_grdprf children))]
 
+fun is_grdprf_a_chain tail tree =
+  let exception FAIL
+      fun chk tree =
+        case get_oneshot' tree
+          of SOME (GRDTREE (prfs, [])) => prfs
+           | SOME (GRDTREE (prfs, [child])) => prfs @ chk child
+           | NONE => (case tail of SOME t => t | NONE => raise FAIL)
+           | SOME _ => raise FAIL
+   in SOME (chk tree)
+   handle FAIL => NONE
+  end
+
 fun get_inductP ctxt (fact :: _) = map single (Induct.find_inductP ctxt (Thm.concl_of fact))
   | get_inductP _ _ = [];
 
@@ -3369,20 +3746,27 @@ fun is_conj_goal s =
          => true
      | _ => false
 
-fun separate_tac time =
+fun separate_tac try_pretty time =
   let exception PRF_FAIL of (unit -> string)
 
       fun pass_tac (origin as Method.Source (tok::toks)) =
             (case Token.unparse tok
-               of "simp_all" => Method.Source (mk_idt "simp" :: toks)
-                | _ => origin)
-        | pass_tac tac = tac
+               of "simp_all" => (true, Method.Source (mk_idt "simp" :: toks))
+                | "rule" => (true, origin)
+                | "simp" => (true, origin)
+                | "clarsipm" => (true, origin)
+                | _ => (false, origin))
+        | pass_tac tac = (false, tac)
 
-      fun pass_tac' s tac =
-          let val tac' = pass_tac tac
+      fun pass_tac' is_multi_goal s tac =
+          let val (nice_single, tac') = pass_tac tac
               val normal = not (is_ind tac andalso is_conj_goal s)
-           in if normal
-            then tac_for_1 tac'
+           in if nice_single
+            then tac'
+            else if normal
+            then if try_pretty andalso not is_multi_goal
+            then tac'
+            else tac_for_1 tac'
             else tac'
           end
 
@@ -3431,7 +3815,7 @@ fun separate_tac time =
                              val M = Thm.nprems_of (#goal (Proof.goal s'3))
                              val new_leaves = new_oneshots M
                           in set_oneshot (lf,
-                                  GRDTREE ([(SOME s, TACTIC (pass_tac' s tac, using, NONE))], new_leaves))
+                                  GRDTREE ([(SOME s, TACTIC (pass_tac' is_multi_goal s tac, using, NONE))], new_leaves))
                            ; (new_leaves @ leaves',
                               Proof.refine_primitive (K (Goal.unrestrict N)) s'3)
                          end
@@ -3444,7 +3828,7 @@ fun separate_tac time =
                  val _ = if diff < ~1 then error "BUG 7139" else ()
                  val new_goals = new_oneshots (diff + 1)
               in set_oneshot (hd leaves,
-                    GRDTREE ([(SOME s, TACTIC (pass_tac' s tac, using, NONE))], new_goals))
+                    GRDTREE ([(SOME s, TACTIC (pass_tac' is_multi_goal s tac, using, NONE))], new_goals))
                ; (new_goals @ tl leaves, s')
              end
         end
@@ -3523,9 +3907,12 @@ fun separate_tac time =
    in init
   end
 
-fun separate_prf tail =
+fun separate_prf try_pretty tail =
   let fun sep [] leaves = leaves
-        | sep ((_, PROOF _) :: _) _ = error "BUG: PROOF should be already eliminated here"
+        | sep (L as (_, PROOF _) :: _) leaves = (
+              tail := L
+            ; leaves)
+            (* error "BUG: PROOF should be already eliminated here" *)
         | sep ((_, QED _) :: _) _ = error "BUG: QED should be already eliminated here"
         | sep ((_, WITH _) :: _) _ = error "BUG: WITH should be already eliminated here"
         | sep ((_, FROM _) :: _) _ = error "BUG: FROM should be already eliminated here"
@@ -3567,7 +3954,7 @@ fun separate_prf tail =
                ; sep L (tl leaves')
              end
         | sep ((s, TACTIC (tac, using, time)) :: L) leaves =
-            separate_tac time using tac (leaves, the s)
+            separate_tac try_pretty time using tac (leaves, the s)
                 |> fst
                 |> sep L
         | sep ((ast' as (_, MPROOF _)) :: L) leaves =
@@ -3602,12 +3989,85 @@ val separate_prf_pass = bottom_up_prfs (
       val use_raw = is_ind_opr ast' andalso is_conj_goal s
       val roots = init_grdprf use_raw s
       val tail = Unsynchronized.ref []
-      val _ = case separate_prf tail ast' roots
+      val _ = case separate_prf false tail ast' roots
                 of [] => ()
                  | _ => error "BUG h8KYedJsTC2jm63bGgXzfg"
       val ret = mk_branch_subgoals (map conclude_grdprf roots)
    in ret @ !tail
   end)
+
+
+val minus_tactic = TACTIC (Method.Source [tok_minus], ([], []), NONE)
+fun separate_tactics try_pretty = let
+     fun is_tac (_, DEFER _) = true
+       | is_tac (_, PREFER _) = true
+       | is_tac (_, DOT) = true
+       | is_tac (_, TACTIC _) = true
+       | is_tac _ = false
+     fun all_tactics [] = true
+       | all_tactics ((_, PROOF _) :: _) = true
+       | all_tactics (tac :: tacs) = is_tac tac andalso all_tactics tacs
+     fun all_tactics_tail [] = []
+       | all_tactics_tail (L as (_, PROOF _) :: _) = L
+       | all_tactics_tail (_ :: L) = all_tactics_tail L
+  (* val all_tactics = forall (
+          fn (_, DEFER _) => true | (_, PREFER _) => true
+           | (_, DOT) => true | (_, TACTIC _) => true
+           | _ => false ) *)
+     fun scan_pass [] = []
+       | scan_pass (L as x :: L') =
+          if all_tactics L
+          then let
+            exception SKIP
+
+            fun attempt version =
+              if version < 0
+              then L
+              else let
+                  val s = the (fst (hd L))
+                  val has_using = #facts (Proof.goal s)
+                  val inserted_code = Unsynchronized.ref NONE
+
+                  val try_pretty = (version div 2 mod 2 = 1)
+                  val try_insert = (version mod 2 <> 1)
+               in if try_insert
+                  then if null has_using
+                    then raise SKIP
+                    else let
+                      val minus :: L' = case !inserted_code
+                                          of SOME code => code
+                                           | NONE => (SOME s, minus_tactic) :: L
+                                                  |> try (eval s)
+                                                  |> (fn NONE => raise SKIP
+                                                       | SOME (_, mL') => mL')
+                      in minus :: work try_pretty L'
+                     end
+                  else work try_pretty L
+              end handle SKIP => attempt (version - 1)
+            and work try_pretty L =
+              let val s = the (fst (hd L))
+                  val use_raw = is_ind_opr L andalso is_conj_goal s
+                  val roots = init_grdprf use_raw s
+                  val tail = Unsynchronized.ref []
+                  val open_leaves = separate_prf try_pretty tail L roots
+                  val ret1 = case (open_leaves, roots)
+                               of ([], _) => mk_branch_subgoals (map conclude_grdprf roots)
+                                | (_, [root]) =>
+                                    (case is_grdprf_a_chain (SOME []) root
+                                       of SOME ret => ret
+                                        | NONE => raise SKIP)
+                                | _ => raise SKIP
+                  val ret  = ret1 @ !tail
+               in if can (eval_no_sorry s) ret
+                  then ret
+                  else raise SKIP
+              end
+            in attempt (if try_pretty then 3 else 1)
+           end
+          else x :: scan_pass L'
+  in bottom_up_prfs scan_pass
+ end
+
 
 (* Match Proof Context *)
 
@@ -3861,7 +4321,7 @@ fun split_proof s0 prfs =
                      ) ordered_prfs' )
           else let
                val grdprfs = init_grdprf false tail_state
-               val _ = case separate_tac tail_time ([],[]) (the tail_prf) (grdprfs, tail_state)
+               val _ = case separate_tac false tail_time ([],[]) (the tail_prf) (grdprfs, tail_state)
                          of ([], _) => ()
                           |  _      => error "BUG h8KYedJsTC2jm63bGgXzfg"
                val prfs = map conclude_grdprf grdprfs
@@ -5308,7 +5768,7 @@ fun anotate_types (s, toks) =
 datatype AST = Isar_AST of ast' | Mini_AST of mast' | NO_AST
 type ret = (string * (AST * exn list)) list
 
-fun print_AST (Isar_AST ast) = print_ast true ast
+fun print_AST (Isar_AST ast) = print_ast NONE ast
   | print_AST (Mini_AST ast) = print_mast true ast
   | print_AST NO_AST = ""
 
@@ -5362,6 +5822,27 @@ fun elaborate ret (s, toks) =
    |> validate ps "Validation Fail: final pass"
    |> (fn X => (ret := ("final_isar_pass", (Isar_AST X, [])) :: !ret; X))
  (* |> (fn X => (warning (print_ast X); X)) *)
+  end
+
+fun elaborate_tactic (s, toks) =
+  let val s = Toplevel.command_exception false
+                  (Toplevel.proof (Proof.map_context ( Config.put Printer.show_markup false
+                                                    #> Config.put Goal.quick_and_dirty true
+                                                    #> Config.put show_types true ))
+                                  Toplevel.empty) s
+      val ps = if Toplevel.is_proof s then Toplevel.proof_of s
+                                      else error "BUG Not a proof state"
+   in Thread_Data.put counter_store NONE
+    ; Thread_Data.put initial_state (SOME ps)
+    ; parse_isar (s, toks)
+   (* |> validate ps "Validation Fail: Initial Pass" (*UNNECESSARY*) *)
+   |> validate ps "Validation Fail: assign_factname" (*NECESSARY*)
+   |> norm_prf_pretrain
+   (* |> clean_tac_pass *)
+   (* |> validate ps "Validation Fail: assign_factname" (*NECESSARY*) *)
+   |> separate_tactics true
+   |> restore_prf_pretrain
+   |> validate ps "Validation Fail: assign_factname" (*NECESSARY*)
   end
 
 fun translate_m targets ret (s, toks) =
@@ -5454,6 +5935,21 @@ fun parse state src =
    in (state, toks)
   end
 
+fun parse'cmt state src =
+  let val thy = Toplevel.theory_of state
+      val kws = Thy_Header.get_keywords thy
+      val pos = Position.make {
+                  line=1, offset=1, end_offset=1, props={label="", file="#TRANSLATOR", id="0"}}
+      val toks = Symbol_Pos.explode (src, pos)
+              |> Token.tokenize kws {strict = false}
+              |> Outer_Syntax.parse_spans
+              |> map_filter (
+                    (fn [] => NONE | x => SOME x) o
+                    filter_out (fn tok => Token.kind_of tok = Token.Space) o
+                    Command_Span.content)
+   in (state, toks)
+  end
+
 fun anotate_types'  state src = anotate_types (parse state src)
 fun translate'  ret state src = elaborate ret (parse state src)
 fun translate'm targets ret state src = translate_m targets ret (parse state src)
@@ -5470,6 +5966,13 @@ fun translate'test state src =
             Output.writeln (name ^ ":\n" ^ print_AST ast)
         end ) (!output)
     ; ()
+  end
+
+fun elaborate_tatic'test pp_name state src =
+  let val ret = elaborate_tactic (parse state src)
+      val s = print_ast pp_name ret
+   in tracing s
+    ; s
   end
 
 end

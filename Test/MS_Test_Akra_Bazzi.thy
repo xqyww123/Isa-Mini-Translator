@@ -20,7 +20,7 @@ lemma x_over_ln_mono:
   assumes "x > exp e"
   assumes "x \<le> y"
   shows   "x / ln x powr e \<le> y / ln y powr e"
-ML_val \<open>val _ =  MinLang_Translator.translate'm @{Isar.state}
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
 "proof (rule DERIV_nonneg_imp_mono[of _ _ \"\<lambda>x. x / ln x powr e\"])\n\
 \  fix t assume t: \"t \<in> {x..y}\"\n\
 \  from assms(1) have \"1 < exp e\" by simp\n\
@@ -34,6 +34,7 @@ ML_val \<open>val _ =  MinLang_Translator.translate'm @{Isar.state}
 \    by (force intro!: derivative_eq_intros simp: powr_diff field_simps powr_add)\n\
 \  from t'' show \"(ln t - e) / ln t powr (e + 1) \<ge> 0\" by (intro divide_nonneg_nonneg) simp_all\n\
 \qed (simp_all add: assms)"\<close>
+  sorry
 
 
 definition akra_bazzi_term :: "nat \<Rightarrow> nat \<Rightarrow> real \<Rightarrow> (nat \<Rightarrow> nat) \<Rightarrow> bool" where
@@ -96,8 +97,9 @@ lemma e_hs_aux:
   (\<forall>h\<in>set hs. (\<lambda>x. h x) \<in> O(\<lambda>x. real x / ln (real x) powr (1 + e))) \<and>
   (\<forall>t\<in>set ts. \<forall>x\<ge>x\<^sub>1. x\<^sub>0 \<le> t x \<and> t x < x) \<and>
   (\<forall>i<k. \<forall>x\<ge>x\<^sub>1. (bs!i)*x + (hs!i) x = real ((ts!i) x))"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
-(File.read (Path.explode "./t8.txt"))\<close>
+   
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state}
+(File.read (Path.explode "/home/qiyuan/Current/MLML/contrib/Isa-Mini/translator/Test/t8.txt"))\<close>
   sorry
 
 lemma
@@ -127,7 +129,7 @@ lemma akra_bazzi_induct [consumes 1, case_names base rec]:
   assumes base: "\<And>x. x \<ge> x\<^sub>0 \<Longrightarrow> x < x\<^sub>1 \<Longrightarrow> P x"
   assumes rec:  "\<And>x. x \<ge> x\<^sub>1 \<Longrightarrow> (\<And>t. t \<in> set ts \<Longrightarrow> P (t x)) \<Longrightarrow> P x"
   shows   "P x"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state}
 "proof (insert assms(1), induction x rule: less_induct)\n\
 \  case (less x)\n\
 \  with assms step_less step_ge_x0 show \"P x\" by (cases \"x < x\<^sub>1\") auto\n\
@@ -244,7 +246,8 @@ qed
 lemma C_bound:
   assumes "\<And>b. b \<in> set bs \<Longrightarrow> C < b" "hb > 0"
   shows   "eventually (\<lambda>x::real. \<forall>b\<in>set bs. C*x \<le> b*x - hb*x/ln x powr (1+e)) at_top"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
+
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state}
 "proof-\n\
 \  from e_pos have \"((\<lambda>x. hb * ln x powr -(1+e)) \<longlongrightarrow> 0) at_top\"\n\
 \    by (intro tendsto_mult_right_zero tendsto_neg_powr ln_at_top) simp_all\n\

@@ -4,7 +4,7 @@ imports
   Collections.ICF_Refine_Monadic 
   "Collections.Intf_Set"
   "Collections.Intf_Map"
-  MS_Translator
+  Minilang_Translator.MS_Translator
 begin
 
 subsection \<open>Unique Priority Queue\<close>
@@ -390,7 +390,7 @@ lemma (in map_empty) empty_autoref[autoref_rules]:
 lemma (in map_lookup) lookup_autoref[autoref_rules]: 
   "PREFER_id Rk \<Longrightarrow> (lookup,op_map_lookup)\<in>Rk\<rightarrow>\<langle>Rk,Rv\<rangle>rel\<rightarrow>\<langle>Rv\<rangle>option_rel"
   
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
 "  apply (intro fun_relI option_relI)\n\
 \  apply (auto simp: lookup_correct rel_alt\n\
 \    dest: fun_relD2)\n\

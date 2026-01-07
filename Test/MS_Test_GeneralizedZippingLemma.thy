@@ -1,5 +1,5 @@
 theory MS_Test_GeneralizedZippingLemma
-imports Modular_Assembly_Kit_Security.CompositionBase MS_Translator
+  imports Modular_Assembly_Kit_Security.CompositionBase Minilang_Translator.MS_Translator
 begin
 
 context Compositionality
@@ -17,9 +17,9 @@ lemma generalized_zipping_lemma1: "\<lbrakk> N\<^bsub>\<V>1\<^esub> \<inter> E\<
   \<and> ((\<tau> \<upharpoonleft> E\<^bsub>ES1\<^esub>) @ t1) \<in> Tr\<^bsub>ES1\<^esub> \<and> ((\<tau> \<upharpoonleft> E\<^bsub>ES2\<^esub>) @ t2) \<in> Tr\<^bsub>ES2\<^esub> \<and> (lambda \<upharpoonleft> E\<^bsub>ES1\<^esub>) = (t1 \<upharpoonleft> V\<^bsub>\<V>\<^esub>)
   \<and> (lambda \<upharpoonleft> E\<^bsub>ES2\<^esub>) = (t2 \<upharpoonleft> V\<^bsub>\<V>\<^esub>) \<and> (t1 \<upharpoonleft> C\<^bsub>\<V>1\<^esub>) = [] \<and> (t2 \<upharpoonleft> C\<^bsub>\<V>2\<^esub>) = []) 
   \<longrightarrow> (\<exists> t. ((\<tau> @ t) \<in> Tr\<^bsub>(ES1 \<parallel> ES2)\<^esub> \<and> (t \<upharpoonleft> V\<^bsub>\<V>\<^esub>) = lambda \<and> (t \<upharpoonleft> C\<^bsub>\<V>\<^esub>) = [])) )"
-         
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
-(File.read (Path.explode "./Translator/t12.txt"))\<close>
+           
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
+(File.read (Path.explode "/home/qiyuan/Current/MLML/contrib/Isa-Mini/translator/Test/t12.txt"))\<close>
 
 
 term 1

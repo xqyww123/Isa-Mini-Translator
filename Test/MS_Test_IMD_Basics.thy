@@ -96,7 +96,7 @@ next
     using assms by (simp add: c1)
 qed  *)
   
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
 "proof (cases \"i = j\")\n\
 \  case True\n\
 \  then show ?thesis by(simp add: assms)\n\

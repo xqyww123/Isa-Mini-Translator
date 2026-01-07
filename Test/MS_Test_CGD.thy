@@ -87,7 +87,7 @@ using exI apply (unfold True_def)
 
 
 
-
+  moreover
 
 
 
@@ -106,10 +106,10 @@ lemma strategy_from_coupleddsim_retains_coupledsim:
   shows
     \<open>hd play = AttackerNode p q \<Longrightarrow> R p q\<close>
     \<open>length play > 1 \<Longrightarrow> hd (tl play) = AttackerNode p q \<Longrightarrow> R p q\<close>
-
-             
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
-(File.read (Path.explode "./t15.txt"))\<close>
+ 
+                   
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
+(File.read (Path.explode "/home/qiyuan/Current/MLML/contrib/Isa-Mini/translator/Test/t15.txt"))\<close>
 
 
 (*2 subgoals*)

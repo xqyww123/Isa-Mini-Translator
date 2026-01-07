@@ -34,12 +34,12 @@ mproof
   show True ..
 mqed
 mproof
-  show True ..
-mqed
-  . *)
+  show True .. 
+mqed 
+  . *)           
 lemma \<open>(True \<or> False) \<and> (True \<and> True)\<close>
-  ML_val \<open>val _ = MinLang_Translator.translate' @{Isar.state}
-    "unfolding False_def by (rule conjI, (auto; auto), rule conjI, auto)"
+  ML_val \<open>val _ = MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
+    "unfolding False_def text \<open>asd\<close> by (rule conjI, (auto; auto), rule conjI, auto)"
   \<close>
 apply ((unfold "False_def")[1])
 apply ((rule conjI)[1])
@@ -59,14 +59,14 @@ lemma polyfun_extremal_lemma:
     fixes c :: "nat \<Rightarrow> 'a::real_normed_div_algebra"
   assumes "0 < e"
   shows "\<exists>M. \<forall>z. M \<le> norm(z) \<longrightarrow> norm (\<Sum>i\<le>n. c(i) * z^i) \<le> e * norm(z) ^ (Suc n)"
-                             
-  ML_val \<open>val _ = MinLang_Translator.translate'm @{Isar.state}
-"proof (induct n)\n\
+    
+  ML_val \<open>val _ = MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
+"proof (*ccc*) (induct n) (*ccc*)\n\
 \  case 0 with assms\n\
 \  show ?case\n\
 \    apply (rule_tac x=\"norm (c 0) / e\" in exI)\n\
 \    apply (auto simp: field_simps)\n\
-\    done\n\
+\    (*aa*)done\n\
 \next\n\
 \  case (Suc n)\n\
 \  obtain M where M: \"\<And>z. M \<le> norm z \<Longrightarrow> norm (\<Sum>i\<le>n. c i * z^i) \<le> e * norm z ^ Suc n\"\n\
@@ -88,7 +88,9 @@ lemma polyfun_extremal_lemma:
 \    also have \"... \<le> (e * norm z) * norm z ^ Suc n\"\n\
 \      by (metis z2 mult.commute mult_left_mono norm_ge_zero norm_power)\n\
 \    finally show \"norm ((\<Sum>i\<le>n. c i * z^i) + c (Suc n) * z ^ Suc n) \<le> e * norm z ^ Suc (Suc n)\"\n\
-\      by simp\n\
+\      by simp_all\n\
+\    text \<open>asda\<close>\n\
+\    (*asdasd*)\n\
 \  qed\n\
 \qed"\<close>
 
@@ -122,7 +124,7 @@ using M[OF z1] apply ((simp)[1])
 .
 have fact4: "norm (\<Sum>i\<le>n. c i * z^i) + norm (c (Suc n) * z ^ Suc n) \<le> e * norm z ^ Suc n + norm (c (Suc n) * z ^ Suc n)"
 using fact3 apply ((simp)[1])
-.
+  .
 have fact5: "norm ((\<Sum>i\<le>n. c i * z^i) + c (Suc n) * z ^ Suc n) \<le> e * norm z ^ Suc n + norm (c (Suc n) * z ^ Suc n)"
 using fact4 apply ((blast intro : norm_triangle_le elim :)[1])
 .
@@ -144,8 +146,8 @@ mqed
 
 
 lemma "n choose k \<le> n choose (n div 2)"
-                                                    
-ML_val \<open>val _ = MinLang_Translator.translate'm @{Isar.state}
+                                                        
+ML_val \<open>val _ = MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
 "proof -\n\
     \have \"k \<le> n div 2 \<longleftrightarrow> 2*k \<le> n\" by linarith\n\
     \consider \"2*k \<le> n\" | \"2*k \<ge> n\" \"k \<le> n\" | \"k > n\" by linarith\n\
@@ -155,10 +157,25 @@ ML_val \<open>val _ = MinLang_Translator.translate'm @{Isar.state}
       \thus ?thesis by (intro binomial_mono) linarith+\n\
     \next\n\
       \case 2\n\
-      \thus ?thesis by (intro binomial_antimono) simp_all\n\
+      \thus ?thesis by (intro binomial_antimono, simp_all)\n\
     \qed (simp_all add: binomial_eq_0)\n\
   \qed"
 \<close>
+  sorry
+
+lemma "True &&& True &&& True"
+  ML_val \<open>val _ = MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
+    "by (auto)"\<close>
+
+  sorry 
+axiomatization A B C D :: nat
+  where A: "A = B" and B: "B = C" and C: "C = D"
+lemma "A = D" and "True"
+ML_val \<open>val _ = MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
+"by (simp add: A, simp add: B, simp_all add: C)"
+\<close>
+  by (simp add: A, simp add: B, simp_all add: C)
+
 
 thm order.antisym
 

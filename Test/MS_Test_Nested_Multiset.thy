@@ -27,13 +27,32 @@ inductive_set sub_nmset :: "('a nmultiset \<times> 'a nmultiset) set" where
   "X \<in># M \<Longrightarrow> (X, MSet M) \<in> sub_nmset"
 
 lemma wf_sub_nmset[simp]: "wf sub_nmset"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state} 
 "proof (rule wfUNIVI)\n\
 \  fix P :: \"'a nmultiset \<Rightarrow> bool\" and M :: \"'a nmultiset\"\n\
 \  assume IH: \"\<forall>M. (\<forall>N. (N, M) \<in> sub_nmset \<longrightarrow> P N) \<longrightarrow> P M\"\n\
 \  show \"P M\"\n\
 \    by (induct M; rule IH[rule_format]) (auto simp: sub_nmset.simps)\n\
 \qed"\<close>
+proof (rule wfUNIVI)
+  (*goal: \<open>\<And>(P::'a nmultiset \<Rightarrow> bool) x::'a nmultiset. \<forall>x::'a nmultiset. (\<forall>y::'a nmultiset. (y, x) \<in> sub_nmset \<longrightarrow> P y) \<longrightarrow> P x \<Longrightarrow> P x\<close>*)
+  fix P :: "'a nmultiset \<Rightarrow> bool" and M :: "'a nmultiset"
+  assume IH: "\<forall>M. (\<forall>N. (N, M) \<in> sub_nmset \<longrightarrow> P N) \<longrightarrow> P M" (*\<open>\<forall>M::'a nmultiset. (\<forall>N::'a nmultiset. (N, M) \<in> sub_nmset \<longrightarrow> (P::'a nmultiset \<Rightarrow> bool) N) \<longrightarrow> P M\<close>*)
+  show "P M"
+    apply (induct M)
+    (*goals:
+      1. \<open>\<And>x::'a. (P::'a nmultiset \<Rightarrow> bool) (Elem x)\<close>
+      2. \<open>\<And>x::'a nmultiset multiset. (\<And>xa::'a nmultiset. xa \<in># x \<Longrightarrow> (P::'a nmultiset \<Rightarrow> bool) xa) \<Longrightarrow> P (MSet x)\<close>
+    discuss goal 1*)
+      apply (rule IH[rule_format])
+      (*top goal: \<open>\<And>x::'a. (P::'a nmultiset \<Rightarrow> bool) (Elem x)\<close>*)
+      apply ((auto simp: sub_nmset.simps)[1])
+    (*discuss goal 2*)
+      apply (rule IH[rule_format])
+      (*top goal: \<open>\<And>x::'a nmultiset multiset. (\<And>xa::'a nmultiset. xa \<in># x \<Longrightarrow> (P::'a nmultiset \<Rightarrow> bool) xa) \<Longrightarrow> P (MSet x)\<close>*)
+      apply ((auto simp: sub_nmset.simps)[1])
+    (*proven 2 subgoals*) .
+qed
 
 primrec depth_nmset :: "'a nmultiset \<Rightarrow> nat" ("|_|") where
   "|Elem a| = 0"

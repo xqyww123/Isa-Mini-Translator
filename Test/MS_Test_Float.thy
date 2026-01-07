@@ -6,7 +6,7 @@
 section \<open>Floating-Point Numbers\<close>
 
 theory MS_Test_Float
-imports "HOL-Library.Log_Nat" "HOL-Library.Lattice_Algebras" MS_Translator
+imports "HOL-Library.Log_Nat" "HOL-Library.Lattice_Algebras" Minilang_Translator.MS_Translator
 begin
 
 definition "float = {m * 2 powr e | (m :: int) (e :: int). True}"
@@ -81,7 +81,7 @@ lemma plus_float[simp]: "r \<in> float \<Longrightarrow> p \<in> float \<Longrig
 
   
  
-ML_val \<open>val _ =   MinLang_Translator.translate'm @{Isar.state}
+ML_val \<open>val _ =   MinLang_Translator.elaborate_tatic'test (SOME "type")   @{Isar.state}
 " unfolding float_def\n\
 \proof (safe, simp)\n\
 \  have *: \"\<exists>(m::int) (e::int). m1 * 2 powr e1 + m2 * 2 powr e2 = m * 2 powr e\"\n\

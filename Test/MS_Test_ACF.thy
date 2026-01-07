@@ -9,8 +9,8 @@ begin
 lemma prod_eq_zeroE:
   assumes "prod f I = (0::'a::{semiring_no_zero_divisors,comm_monoid_mult,zero_neq_one})"
   obtains i where "finite I" and "i \<in> I" and "f i = 0"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
-    (File.read (Path.explode "./Test/t59.txt"))\<close>
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
+    (File.read (Path.explode "/home/qiyuan/Current/MLML/contrib/Isa-Mini/translator/Test/t59.txt"))\<close>
   sorry
 
 lemma degree_prod_eq:
@@ -59,16 +59,16 @@ proof -
 qed
 
 lemma infinite_UNIV: "infinite (UNIV::'a set)"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
-    (File.read (Path.explode "./Test/t58.txt"))\<close>
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")    @{Isar.state} 
+    (File.read (Path.explode "/home/qiyuan/Current/MLML/contrib/Isa-Mini/translator/Test/t58.txt"))\<close>
   sorry
  
 lemma linear_factorsE: 
   fixes p :: "'a poly"
   obtains c A m where "finite A" and "p = Polynomial.smult c (\<Prod>a\<in>A. [:- a, 1:] ^ m a)"
     and "\<And>a. m a = 0 \<longleftrightarrow> a \<notin> A" and "c = 0 \<longleftrightarrow> p = 0" and "\<And>z. poly p z = 0 \<longleftrightarrow> (c = 0 \<or> z \<in> A)"
-  ML_val \<open>val _ = MinLang_Translator.translate'm  @{Isar.state} 
-    (File.read (Path.explode "./Test/t57.txt"))\<close>
+  ML_val \<open>val _ = MinLang_Translator.elaborate_tatic'test (SOME "type")      @{Isar.state} 
+    (File.read (Path.explode "/home/qiyuan/Current/MLML/contrib/Isa-Mini/translator/Test/t57.txt"))\<close>
   sorry
 
 end (* alg_closed_field *)

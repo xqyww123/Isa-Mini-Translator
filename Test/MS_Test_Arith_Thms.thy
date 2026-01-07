@@ -57,8 +57,9 @@ theorem nat_eq_to_ineqs: "(x::nat) = y + n \<Longrightarrow> x \<le> y + n \<and
 theorem nat_ineq_impl_not_eq: "(x::nat) + n \<le> y \<Longrightarrow> n > 0 \<Longrightarrow> x \<noteq> y" by simp
 theorem eq_to_ineqs: "(x::nat) \<equiv> y \<Longrightarrow> x \<le> y \<and> y \<le> x"  
   
-  ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+  ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")     @{Isar.state} 
     "by simp"\<close>
+  sorry
 theorem ineq_to_eqs1: "(x::nat) \<le> y + 0 \<Longrightarrow> y \<le> x + 0 \<Longrightarrow> x = y" by simp
 
 ML_file \<open>arith.ML\<close>

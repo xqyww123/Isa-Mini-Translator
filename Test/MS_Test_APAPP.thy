@@ -350,7 +350,8 @@ text \<open>
   Any rule that satisfies Justified Representation also satisfies Weak Representation
 \<close>   
 sublocale weak_rep_anon_papp
-ML_val \<open>val _ =  MinLang_Translator.translate'm @{Isar.state}
+
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")   @{Isar.state}
 "proof\n\
 \  fix A x\n\
 \  assume *: \"is_pref_profile A\" \"n_voters \<le> committee_size * count A {x}\"\n\

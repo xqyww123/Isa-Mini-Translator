@@ -22,9 +22,10 @@ lemma length_of_bin_rep_aux:
   fixes n m:: nat
   assumes "m < 2^n"
   shows "length (bin_rep_aux n m) = n+1" 
-  using assms   
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
-"proof(induction n arbitrary: m)\n\
+  
+
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
+"using assms proof(induction n arbitrary: m)\n\
 \  case 0\n\
 \  then show \"length (bin_rep_aux 0 m) = 0 + 1\" by simp\n\
 \next\n\

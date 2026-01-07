@@ -117,7 +117,8 @@ theorem prefix_append:
  
 lemma append_one_prefix:
   "prefix xs ys \<Longrightarrow> length xs < length ys \<Longrightarrow> prefix (xs @ [ys ! length xs]) ys"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
 "  proof (unfold prefix_def)\n\
 \    assume a1: \"\<exists>zs. ys = xs @ zs\"\n\
 \    then obtain sk :: \"'a list\" where sk: \"ys = xs @ sk\" by fastforce\n\
@@ -127,6 +128,19 @@ ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
 \    hence \"\<exists>v. xs @ hd sk # v = ys\" using sk by (metis hd_Cons_tl)\n\
 \    thus \"\<exists>zs. ys = (xs @ [ys ! length xs]) @ zs\" using f1 by fastforce\n\
 \  qed"\<close>
+ML \<open>"  proof (unfold prefix_def)\n\
+\    assume a1: \"\<exists>zs. ys = xs @ zs\"\n\
+\    then obtain sk :: \"'a list\" where sk: \"ys = xs @ sk\" by fastforce\n\
+\    assume a2: \"length xs < length ys\"\n\
+\    have f1: \"\<And>v. ([]::'a list) @ v = v\" using append_Nil2 by simp\n\
+\    have \"[] \<noteq> sk\" using a1 a2 sk less_not_refl by force\n\
+\    hence \"\<exists>v. xs @ hd sk # v = ys\" using sk by (metis hd_Cons_tl)\n\
+\    thus \"\<exists>zs. ys = (xs @ [ys ! length xs]) @ zs\" using f1 by fastforce\n\
+\  qed" |> tracing\<close>
+proof (unfold prefix_def)
+  assume a1: "\<exists>zs. ys = xs @ zs"
+  thm this
+  sorry
 
 theorem prefix_length_le: "prefix xs ys \<Longrightarrow> length xs \<le> length ys"
   by (auto simp add: prefix_def)
@@ -184,8 +198,25 @@ lemma strict_prefix_simps [simp, code]:
   by (simp_all add: strict_prefix_def cong: conj_cong)
      
 lemma take_strict_prefix: "strict_prefix xs ys \<Longrightarrow> strict_prefix (take n xs) ys"
-  ML_val \<open> Thor.translate_thor_src true @{Isar.state}
- "proof (induct n arbitrary: xs ys)\n\
+
+
+ML_val \<open> MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
+ "proof (induct n arbitrary: xs ys)\n\          
+  \case 0\n\
+  \then show ?case by (cases ys) simp_all\n\
+\next\n\
+  \case (Suc n)\n\
+  \then show ?case by (metis prefix_order.less_trans strict_prefixI take_is_prefix)\n\
+\qed"\<close>
+    proof (induct n arbitrary: xs ys)
+    case 0
+    then show ?case by (cases ys) simp_all
+  next
+    case (Suc n)
+    then show ?case by (metis prefix_order.less_trans strict_prefixI take_is_prefix)
+  qed
+
+ML\<open>tracing "proof (induct n arbitrary: xs ys)\n\          
   \case 0\n\
   \then show ?case by (cases ys) simp_all\n\
 \next\n\
@@ -357,7 +388,8 @@ definition Longest_common_prefix :: "'a list set \<Rightarrow> 'a list" where
 lemma Longest_common_prefix_ex: "L \<noteq> {} \<Longrightarrow>
   \<exists>ps. (\<forall>xs \<in> L. prefix ps xs) \<and> (\<forall>qs. (\<forall>xs \<in> L. prefix qs xs) \<longrightarrow> size qs \<le> size ps)"
   (is "_ \<Longrightarrow> \<exists>ps. ?P L ps")
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+  sorry
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
 (File.read (Path.explode "./Test/t52.txt"))\<close>
 
 lemma Longest_common_prefix_unique:
@@ -469,21 +501,8 @@ proof (induct rule: list_induct2', blast, force, force)
 qed
 
 lemma parallel_append: "a \<parallel> b \<Longrightarrow> a @ c \<parallel> b @ d"
-         
-  apply (min_script \<open>
-RULE parallelI
-  RULE parallelE
-  RULE conjE
-  INDUCT rule: not_prefix_induct
-    APPLY (simp)
-  NEXT
-    APPLY (simp)
-  NEXT
-    APPLY (simp)
-NEXT
-\<close>)
     
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
 " apply (rule parallelI)\n\
 \    apply (erule parallelE, erule conjE,\n\
 \      induct rule: not_prefix_induct, simp+)+\n\
@@ -815,7 +834,7 @@ lemma last_suffixes [simp]: "last (suffixes xs) = xs"
 
 lemma suffixes_append: 
   "suffixes (xs @ ys) = suffixes ys @ map (\<lambda>xs'. xs' @ ys) (tl (suffixes xs))"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
 "proof (induction ys rule: rev_induct)\n\
 \  case Nil\n\
 \  thus ?case by (cases xs rule: rev_cases) auto\n\
@@ -825,7 +844,7 @@ ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state}
 \    by (simp only: append.assoc [symmetric] suffixes_snoc snoc.IH) simp\n\
 \qed"\<close>
 
- apply ((induction ys rule: rev_induct)[1])
+ apply ((induct ys rule: rev_induct)[1])
 (*2 subgoals*)
 mproof
 case Nil:  Nil

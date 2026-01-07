@@ -7,7 +7,7 @@
 section \<open>Immutable Arrays with Code Generation\<close>
 
 theory MS_Test_IArray
-imports Main MS_Translator
+imports Main Minilang_Translator.MS_Translator
 begin
 
 subsection \<open>Fundamental operations\<close>
@@ -146,7 +146,8 @@ lemma exists_upto_of_nat:
 lemma [code]:
   "exists_upto p k as \<longleftrightarrow> (if k \<le> 0 then False else
     let l = k - 1 in p (sub' (as, l)) \<or> exists_upto p l as)"
-ML_val \<open>val _ =  MinLang_Translator.translate'm @{Isar.state}
+
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")   @{Isar.state}
 "proof (cases \"k \<ge> 1\")\n\
 \  case False\n\
 \  then have \<open>k \<le> 0\<close>\n\

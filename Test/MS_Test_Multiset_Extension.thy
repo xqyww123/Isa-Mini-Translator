@@ -82,7 +82,7 @@ lemma mulex_on_induct [consumes 1, case_names base step, induct pred: mulex_on]:
     and "\<And>L M N. \<lbrakk>mulex_on P A L M; Q L M; N \<in> multisets A; mulex1 P M N\<rbrakk> \<Longrightarrow> Q L N"
   shows "Q M N" 
                      
-ML_val \<open>val _ =  MinLang_Translator.translate'm @{Isar.state}
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
 "  using assms unfolding mulex_on_def by (induct) blast+ "
 \<close>
 

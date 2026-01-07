@@ -24,7 +24,9 @@ lemma alphaBoundOutput:
   assumes A1: "x' \<sharp> P"
 
 shows "a<\<nu>x> \<prec> P = a<\<nu>x'> \<prec> ([(x, x')] \<bullet> P)"
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+
+  ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
+
 "proof(case_tac \"x=x'\")\n\
 \  assume \"x=x'\"\n\
 \  thus ?thesis by simp\n\
@@ -682,8 +684,9 @@ lemma tauCases:
   and     "Prop (\<tau>) P"
  
   shows "Prop \<alpha> P'"  
-thm tauCases' 
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
+  thm tauCases' 
+
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
 "using assms\n\
 \by(cases rule: tauCases') (auto simp add: pi.inject residual.inject)"\<close>
 

@@ -1,6 +1,6 @@
 theory MS_Test_Poincare_Map
 imports
-  Ordinary_Differential_Equations.Flow MS_Translator
+  Ordinary_Differential_Equations.Flow Minilang_Translator.MS_Translator
 begin
 
 abbreviation "plane n c \<equiv> {x. x \<bullet> n = c}"
@@ -229,9 +229,9 @@ lemma returns_to_laterI:
   assumes t: "t > 0" "t \<in> existence_ivl0 x"
   assumes flow_not: "\<And>s. 0 < s \<Longrightarrow> s \<le> t \<Longrightarrow> flow0 x s \<notin> P"
   shows "returns_to P (flow0 x t)"
-    
-ML_val \<open>val _ =  MinLang_Translator.translate'm  @{Isar.state} 
-(File.read (Path.explode "./Translator/t9.txt"))\<close>
+     
+ML_val \<open>val _ =  MinLang_Translator.elaborate_tatic'test (SOME "type")  @{Isar.state} 
+(File.read (Path.explode "/home/qiyuan/Current/MLML/contrib/Isa-Mini/translator/Test/t9.txt"))\<close>
 
 
 
