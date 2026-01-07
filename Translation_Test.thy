@@ -59,9 +59,11 @@ lemma polyfun_extremal_lemma:
     fixes c :: "nat \<Rightarrow> 'a::real_normed_div_algebra"
   assumes "0 < e"
   shows "\<exists>M. \<forall>z. M \<le> norm(z) \<longrightarrow> norm (\<Sum>i\<le>n. c(i) * z^i) \<le> e * norm(z) ^ (Suc n)"
-    
+ 
+ 
+  
   ML_val \<open>val _ = MinLang_Translator.elaborate_tatic'test (SOME "type") @{Isar.state}
-"proof (*ccc*) (induct n) (*ccc*)\n\
+"proof (induct n) (*ccc*)\n\
 \  case 0 with assms\n\
 \  show ?case\n\
 \    apply (rule_tac x=\"norm (c 0) / e\" in exI)\n\

@@ -110,6 +110,7 @@ fun print_case_newthings (Command_Span.Span (Command_Span.Command_Span (name, _)
 fun translate_SH improved stat commands =
    let val ctxt = Toplevel.context_of stat
        val sequent = #goal (Proof.goal (Toplevel.proof_of stat))
+       val kws = Thy_Header.get_keywords (Toplevel.theory_of stat)
   
        val override =
           if improved
@@ -132,9 +133,9 @@ fun translate_SH improved stat commands =
                   if improved
                   then let
                        val add = (if null w  then [] else [" WITH "])
-                               @ print_facts w
+                               @ print_facts (SOME kws) w
                        val del = (if null wo then [] else [" WITHOUT "])
-                               @ print_facts (#del override)
+                               @ print_facts (SOME kws) (#del override)
                        val code = String.concat ("END" :: add @ del)
                     in code
                    end
@@ -162,6 +163,7 @@ fun translate_thor improved stat commands =
                        begin_with_tactic all_commands
             then let val ctxt = Toplevel.context_of stat
                      val sequent = #goal (Proof.goal (Toplevel.proof_of stat))
+                     val kws = Thy_Header.get_keywords (Toplevel.theory_of stat)
 
                      val override =
                         if improved
@@ -186,9 +188,9 @@ fun translate_thor improved stat commands =
                                 if improved
                                 then let
                                      val add = (if null w  then [] else [" add: "])
-                                             @ print_facts w
+                                             @ print_facts (SOME kws) w
                                      val del = (if null wo then [] else [" del: "])
-                                             @ print_facts (#del override)
+                                             @ print_facts (SOME kws) (#del override)
                                      val code = String.concat (
                                                    "by (auto_sledgehammer"
                                                 :: add

@@ -143,7 +143,7 @@ datatype mast =
 type mast' = (Minilang.state option * mast) list
 datatype AST = Isar_AST of ast' | Mini_AST of mast' | NO_AST
 type ret = (string * (AST * exn list)) list
-val print_AST : AST -> string
+val print_AST : Keyword.keywords option -> AST -> string
 
 val elaborate  : ret Unsynchronized.ref -> Toplevel.state * Token.src list -> ast'
 val elaborate_tactic : Toplevel.state * Token.src list -> ast'
@@ -160,8 +160,8 @@ val translate'test : Toplevel.state -> string -> unit
 val print_all_goals : REPL_Serialize.pp_name list -> string * string -> int -> Proof.state -> string list
 val print_this_fact : REPL_Serialize.pp_name list -> Proof.state -> string list
 (* val print_calculation : REPL_Serialize.pp_name list -> Proof.state -> string list *)
-val print_ast  : REPL_Serialize.pp_name option -> ast' -> string
-val print_mast : bool (*prints response*) -> mast' -> string
+val print_ast  : REPL_Serialize.pp_name option -> Keyword.keywords option -> ast' -> string
+val print_mast : Keyword.keywords option -> bool (*prints response*) -> mast' -> string
 
 val parse_isar : Toplevel.state * Token.src list -> ast'
 val parse_isar_no_state : Token.src list -> ast'
@@ -1748,7 +1748,7 @@ fun print_calculation pp_names name state =
                        @ ["*)"])) pp_names
   end
 
-fun print_ast verbose =
+fun print_ast verbose kws =
   let datatype mode = NL | SP | ST
       fun newline i NL = newline_indent_of i
         | newline i ST = indent_of i
@@ -1784,7 +1784,7 @@ fun print_ast verbose =
                   let val props = Attrib.eval_thms ctxt [fact]
                                |> map Thm.prop_of
                       val _ = if length props > 10 then () else ()
-                   in print_fact fact @
+                   in print_fact kws fact @
                     (case props
                        of [] => []
                         | _ => " (*" ::
@@ -1796,7 +1796,7 @@ fun print_ast verbose =
                              @ ["*)"])
                   end) facts)
                 end
-             | _ => print_facts facts
+             | _ => print_facts kws facts
       fun print_calculation' name sss =
           case (verbose, sss)
             of (SOME pp, SOME s) => (
@@ -1928,7 +1928,7 @@ fun print_ast verbose =
         | print i ik ((_, ULTIMATELY _) :: L) =
             newline i ik :: "ultimately" :: print i SP L
         | print i ik ((sss, UNFOLD facts) :: L) =
-              newline i ik :: "unfolding " :: implode_with " " (map print_fact facts)
+              newline i ik :: "unfolding " :: implode_with " " (map (print_fact kws) facts)
             @ print_all_goals' ("goal:", "goals:") i (next_sss L)
             @ print i NL L
         (*WARNING! May disable this*)
@@ -1945,7 +1945,7 @@ fun print_ast verbose =
                            @ tailx
                         else tailx
                  in newline i ik
-                :: (if null using then [] else "using " :: print_facts using)
+                :: (if null using then [] else "using " :: print_facts kws using)
                 @ cmd :: (
                   if method_has_single_word tac
                   then print_method' sss tac @ tailx
@@ -2055,14 +2055,14 @@ fun print_ast verbose =
    in print 0 ST
   end
 
-val print_ast = String.concat oo print_ast
+val print_ast = String.concat ooo print_ast
 
 fun print_mvars NONE = []
   | print_mvars (SOME vs) =
       ( if null vs then [] else [" VARS "] )
       @ implode_with " " (map (fn NONE => ["_"] | SOME s => [s]) vs)
-fun print_with _ [] = []
-  | print_with m facts = m :: print_facts facts
+fun print_with _ _ [] = []
+  | print_with kws m facts = m :: print_facts kws facts
 
 val print_comments = Unsynchronized.ref false
 
@@ -2653,7 +2653,7 @@ fun validate s msg ast =
 
 end
 
-fun print_mast print_response =
+fun print_mast kws print_response =
   let fun response' i (s, mast) =
         let val _ = fetch_items ()
             val ctxt = Minilang.context_of (the s)
@@ -2681,13 +2681,13 @@ fun print_mast print_response =
         | print i k ((x as (_, MCRUSH (mvars, (wth, wthout)))) :: L) =
               indent_of i :: "CRUSH"
            :: print_mvars mvars
-            @ print_with " WITH " wth
-            @ print_with " WITHOUT " wthout
+            @ print_with kws " WITH " wth
+            @ print_with kws " WITHOUT " wthout
             @ newline x i k L
         | print i k ((x as (_, MSIMP (wth, wthout))) :: L) =
               indent_of i :: "SIMP"
-           :: print_with " WITH " wth
-            @ print_with " WITHOUT " wthout
+           :: print_with kws " WITH " wth
+            @ print_with kws " WITHOUT " wthout
             @ newline x i k L
         | print i k ((x as (_, MINTRO (m,vars))) :: L) =
               indent_of i
@@ -2697,15 +2697,15 @@ fun print_mast print_response =
             @ newline x i k L
         | print i k ((x as (_, MHAMMER (wth, wthout))) :: L) =
               indent_of i :: "HAMMER"
-           :: print_with " WITH " wth
-            @ print_with " WITHOUT " wthout
+           :: print_with kws " WITH " wth
+            @ print_with kws " WITHOUT " wthout
             @ newline x i k L
         | print i k ((x as (_, MEND ((typ, vs, wth, wthout), _))) :: L) =
               indent_of k
            :: (case typ of Minilang.T_END => "END" | _ => "NEXT")
            :: print_mvars vs
-            @ print_with " WITH " wth
-            @ print_with " WITHOUT " wthout
+            @ print_with kws " WITH " wth
+            @ print_with kws " WITHOUT " wthout
             @ newline x i k L
         | print i k ((x as (_, MCONSIDER (branches,body))) :: L) =
               indent_of i
@@ -2721,14 +2721,14 @@ fun print_mast print_response =
         | print i k ((x as (_, MUNFOLD facts)) :: L) =
               indent_of i
            :: "UNFOLD "
-           :: print_facts facts
+           :: print_facts kws facts
             @ newline x i k L
         | print i k ((x as (_, MTACTIC (tac, (using,_), _))) :: L) =
               indent_of i
            :: "APPLY ("
            :: print_method tac
             @ ")"
-           :: (if null using then [] else " WITH " :: print_facts using)
+           :: (if null using then [] else " WITH " :: print_facts kws using)
             @ newline x i k L
         | print i k ((x as (_, MDEFINE (vs, astmt, fixes))) :: L) =
               indent_of i
@@ -2764,8 +2764,8 @@ fun print_mast print_response =
         | print i k ((x as (_, MRULE (rules, wth))) :: L) =
               indent_of i
            :: "RULE "
-           :: print_facts rules
-            @ print_with " WITH " wth
+           :: print_facts kws rules
+            @ print_with kws " WITH " wth
             @ newline x i k L
         | print i k ((x as (_, MCHOOSE terms)) :: L) =
               indent_of i
@@ -2783,7 +2783,7 @@ fun print_mast print_response =
               indent_of i
            :: "CONFIG "
            :: implode_with " and " (
-                map (fn (B,facts) => print_attrbind B @ " = " :: print_facts facts) notes)
+                map (fn (B,facts) => print_attrbind B @ " = " :: print_facts kws facts) notes)
             @ newline x i k L
         | print i k ((x as (_, MCFG_BUNDL bundls)) :: L) =
               indent_of i
@@ -2805,17 +2805,17 @@ fun print_mast print_response =
               indent_of i :: "INDUCT "
            :: print_toks toks
             @ print_mvars vs
-            @ print_with " WITH " using
+            @ print_with kws " WITH " using
             @ newline x i k L
         | print i k ((x as (_, MCASE (toks, vs, using))) :: L) =
               indent_of i :: "CASE_SPLIT "
            :: print_toks toks
             @ print_mvars vs
-            @ print_with " WITH " using
+            @ print_with kws " WITH " using
             @ newline x i k L
         | print i k ((x as (_, MINSERT facts)) :: L) =
               indent_of i :: "APPLY (insert "
-           :: print_facts facts
+           :: print_facts kws facts
             @ ")"
            :: newline x i k L
 (*        | print i k ((_, MCALC ((B, goal, _), body)) :: L) =
@@ -2834,7 +2834,7 @@ fun print_mast print_response =
    in print 0 0
   end
       
-val print_mast = String.concat oo print_mast
+val print_mast = String.concat ooo print_mast
 
 fun validatem ctxt0 s ast =
   let val (rets, ast') = evalm s ast
@@ -5768,9 +5768,9 @@ fun anotate_types (s, toks) =
 datatype AST = Isar_AST of ast' | Mini_AST of mast' | NO_AST
 type ret = (string * (AST * exn list)) list
 
-fun print_AST (Isar_AST ast) = print_ast NONE ast
-  | print_AST (Mini_AST ast) = print_mast true ast
-  | print_AST NO_AST = ""
+fun print_AST kws (Isar_AST ast) = print_ast NONE kws ast
+  | print_AST kws (Mini_AST ast) = print_mast kws true ast
+  | print_AST _ NO_AST = ""
 
 fun elaborate ret (s, toks) =
   let val s = Toplevel.command_exception false
@@ -5955,6 +5955,7 @@ fun translate'  ret state src = elaborate ret (parse state src)
 fun translate'm targets ret state src = translate_m targets ret (parse state src)
 fun translate'test state src =
   let val output = Unsynchronized.ref []
+      val kws = SOME (Thy_Header.get_keywords (Toplevel.theory_of state))
    in translate'm ["refined", "raw"] output state src
     ; app (let open Pretty in
         fn (name, (NO_AST, fails)) =>
@@ -5963,14 +5964,15 @@ fun translate'test state src =
               map (item o single o Runtime.pretty_exn) fails
             ) ))
           | (name, (ast, _)) =>
-            Output.writeln (name ^ ":\n" ^ print_AST ast)
+            Output.writeln (name ^ ":\n" ^ print_AST kws ast)
         end ) (!output)
     ; ()
   end
 
 fun elaborate_tatic'test pp_name state src =
   let val ret = elaborate_tactic (parse state src)
-      val s = print_ast pp_name ret
+      val kws = SOME (Thy_Header.get_keywords (Toplevel.theory_of state))
+      val s = print_ast pp_name kws ret
    in tracing s
     ; s
   end

@@ -14,7 +14,7 @@ exception Unsupported of string
 
 
 val quote_space : string -> string
-val quote_fact  : string -> string
+val quote_fact  : Keyword.keywords option -> string -> string
 
 val print_mixfix : mixfix -> string list
 val print_var : binding * string option * mixfix -> bstring list
@@ -26,9 +26,9 @@ val print_attrbind  : binding * Token.T list list -> string list
 val print_attrbind' : binding * Token.T list list -> string list
 val print_iv' : Facts.interval -> string list
 val print_iv : Facts.interval list option -> string list
-val print_factref : Facts.ref -> string list
-val print_fact : Facts.ref * Token.T list list -> string list
-val print_facts : (Facts.ref * Token.T list list) list -> string list
+val print_factref : Keyword.keywords option -> Facts.ref -> string list
+val print_fact : Keyword.keywords option -> Facts.ref * Token.T list list -> string list
+val print_facts : Keyword.keywords option -> (Facts.ref * Token.T list list) list -> string list
 val print_term : string -> string list
 val pretty_ty : Proof.context -> typ -> string
 
@@ -167,12 +167,34 @@ val extract_proof =
    in pass [BWD]
   end
 
+fun has_delimiter s =
+  let val N = size s
+      val i = Unsynchronized.ref 0
+      val ret = Unsynchronized.ref false
+   in while !i < N andalso not (!ret) do
+        let val c = String.sub (s, !i)
+         in if Char.isAlphaNum c orelse
+               (case c of #"_" => true | #"'" => true | #"." => true | _ => false)
+          then i := !i + 1
+          else ret := true
+        end
+    ; !ret
+  end
 
-
-
-
-val quote_space = Phi_Help.quote_space
-val quote_fact  = Phi_Help.quote_fact
+val sys_keywords = Thy_Header.get_keywords @{theory}
+fun quote_space s = if has_delimiter s then quote s else s
+fun quote_fact keywords =
+  let val keywords = the_default sys_keywords keywords
+      fun gen s =
+        if s <> "" andalso
+          (has_delimiter s orelse
+           not (Char.isAlpha (String.sub (s,0))) orelse
+           Keyword.is_command keywords s orelse
+           Keyword.is_keyword keywords s )
+        then quote s
+        else s
+  in gen
+ end
 
 
 fun print_mixfix NoSyn = []
@@ -213,10 +235,10 @@ fun print_iv' (Facts.FromTo (i,j)) = [string_of_int i, "-", string_of_int j]
 fun print_iv NONE = []
   | print_iv (SOME ivs) = "(" :: implode_with "," (map print_iv' ivs) @ [")"]
 
-fun print_factref (Facts.Named ((N,_),iv)) = quote_fact N :: print_iv iv
-  | print_factref (Facts.Fact expr) = ["\<open>", trim_markup expr, "\<close>"]
-fun print_fact (rf,attrs) = print_factref rf @ print_attr attrs
-val print_facts = implode_with " " o map print_fact
+fun print_factref kws (Facts.Named ((N,_),iv)) = quote_fact kws N :: print_iv iv
+  | print_factref _ (Facts.Fact expr) = ["\<open>", trim_markup expr, "\<close>"]
+fun print_fact kws (rf,attrs) = print_factref kws rf @ print_attr attrs
+fun print_facts kws = implode_with " " o map (print_fact kws)
 
 fun print_term tm = [quote_space (trim_markup tm)]
 fun pretty_ty ctxt T = trim_markup (Syntax.string_of_typ ctxt T)
