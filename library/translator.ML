@@ -4046,7 +4046,7 @@ fun separate_tactics try_pretty = let
      fun scan_pass [] = []
        | scan_pass (L as x :: L') =
           if all_tactics L
-          then let
+          then \<^try>\<open>let
             exception SKIP
 
             fun attempt version =
@@ -4073,7 +4073,7 @@ fun separate_tactics try_pretty = let
                      end
                   else work try_pretty L
               end handle SKIP => attempt (version - 1)
-            and work try_pretty L =
+            and work try_pretty L = \<^try>\<open>
               let val s = the (fst (hd L))
                   val use_raw = is_ind_opr L andalso is_conj_goal s
                   val roots = init_grdprf use_raw s
@@ -4091,9 +4091,9 @@ fun separate_tactics try_pretty = let
                in if can (eval_no_sorry s) ret
                   then ret
                   else raise SKIP
-              end
+              end catch _ => raise SKIP\<close>
             in attempt (if try_pretty then 3 else 1)
-           end
+           end catch _ => L\<close>
           else x :: scan_pass L'
   in bottom_up_prfs scan_pass
  end

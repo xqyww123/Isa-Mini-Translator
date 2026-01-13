@@ -4,7 +4,10 @@ theory MS_Translator
        and "mqed"   :: qed_block % "proof"
 begin
 
+(*
 declare [[ML_debugger, ML_print_depth = 1000, ML_exception_debugger]]
+
+declare [[ML_exception_debugger, ML_exception_trace]] *)
 
 method_setup msorry = \<open>
   Scan.succeed (fn _ =>
