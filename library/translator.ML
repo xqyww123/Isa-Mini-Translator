@@ -157,10 +157,10 @@ val translate_m  : string list -> ret Unsynchronized.ref -> Toplevel.state * Tok
 val translate'm  : string list -> ret Unsynchronized.ref -> Toplevel.state -> string -> unit
 val translate'test : Toplevel.state -> string -> unit
 
-val print_all_goals : REPL_Serialize.pp_name list -> string * string -> int -> Proof.state -> string list
-val print_this_fact : REPL_Serialize.pp_name list -> Proof.state -> string list
-(* val print_calculation : REPL_Serialize.pp_name list -> Proof.state -> string list *)
-val print_ast  : REPL_Serialize.pp_name option -> Keyword.keywords option -> ast' -> string
+val print_all_goals : RPC_Pretty.pp_name list -> string * string -> int -> Proof.state -> string list
+val print_this_fact : RPC_Pretty.pp_name list -> Proof.state -> string list
+(* val print_calculation : RPC_Pretty.pp_name list -> Proof.state -> string list *)
+val print_ast  : RPC_Pretty.pp_name option -> Keyword.keywords option -> ast' -> string
 val print_mast : Keyword.keywords option -> bool (*prints response*) -> mast' -> string
 
 val parse_isar : Toplevel.state * Token.src list -> ast'
@@ -173,7 +173,7 @@ val facts_in_SH_return : string -> (Facts.ref * Token.src list) list (*using*)
 val case_parser : ast parser
 val msorry_printing : string Unsynchronized.ref
 
-val elaborate_tatic'test : REPL_Serialize.pp_name option -> Toplevel.state -> string -> string
+val elaborate_tatic'test : RPC_Pretty.pp_name option -> Toplevel.state -> string -> string
 
 end
 
@@ -388,7 +388,7 @@ fun facts_in_tac toks =
 
 fun annotate_facts_in_tac pp_name ctxt toks =
   let val (facts, facts') = facts_in_tac (toks @ [Token.eof])
-      val SOT = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt) o Thm.prop_of
+      val SOT = RPC_Pretty.string_of_term pp_name (Context.Proof ctxt) o Thm.prop_of
       fun last_offset pos [] = the_default ~1 (Position.end_offset_of pos)
         | last_offset _ [tok] = the_default ~1 (Position.end_offset_of (Token.pos_of tok))
         | last_offset pos (_ :: L) = last_offset pos L
@@ -513,9 +513,9 @@ fun item_reporter (Minilang.New_Items items') =
   | item_reporter (Minilang.Goals goals') =
       let val store = new_items ()
           val (items, goals) = !store
-       in store := (items, goals')
+       in store := (items, SOME goals')
       end
-  | item_reporter (Minilang.Consider_Case name) =
+  | item_reporter (Minilang.Consider_Case (name, _)) =
       let val store = current_case ()
        in store := name
       end
@@ -1707,7 +1707,7 @@ fun print_all_goals pp_names (prompt, prompts) indent state =
   let val ctxt = Proof.context_of state
       val goals = Thm.prems_of (#goal (Proof.goal state))
    in map (fn pp_name =>
-        let val SOT = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
+        let val SOT = RPC_Pretty.string_of_term pp_name (Context.Proof ctxt)
             val s = case goals
                       of [goal] => ["(*", prompt, " \<open>", SOT goal, "\<close>*)"]
                        | _ => "(*" :: prompts ::
@@ -1721,7 +1721,7 @@ fun print_all_goals pp_names (prompt, prompts) indent state =
 fun print_this_fact pp_names state =
   let val ctxt = Proof.context_of state
       val this = try Proof.the_facts state |> the_default [] |> map Thm.prop_of
-      fun SOT pp_name = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
+      fun SOT pp_name = RPC_Pretty.string_of_term pp_name (Context.Proof ctxt)
    in case this
    of [term] => map (fn pp => String.concat ["(*\<open>", SOT pp term, "\<close>*)"]) pp_names
     | [] => []
@@ -1740,7 +1740,7 @@ fun print_calculation pp_names name state =
       val props = Proof_Context.get_thms ctxt name
                |> map Thm.prop_of
                |> filter_out is_dummy
-      fun SOT pp_name = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
+      fun SOT pp_name = RPC_Pretty.string_of_term pp_name (Context.Proof ctxt)
    in case props
    of [prop] => map (fn pp => String.concat ["(*calculation: \<open>", SOT pp prop, "\<close>*)"]) pp_names
     | [] => []
@@ -1781,7 +1781,7 @@ fun print_ast verbose kws =
           case (verbose, sss)
             of (SOME pp, SOME s) =>
                 let val ctxt = Proof.context_of s
-                    fun SOT pp_name = REPL_Serialize.string_of_term pp_name (Context.Proof ctxt)
+                    fun SOT pp_name = RPC_Pretty.string_of_term pp_name (Context.Proof ctxt)
                  in implode_with " " (map (fn fact =>
                   let val props = Attrib.eval_thms ctxt [fact]
                                |> map Thm.prop_of
@@ -1815,7 +1815,7 @@ fun print_ast verbose kws =
         case (sss, verbose)
           of (SOME s, SOME pp) =>
         let val ctxt = Proof.context_of s
-            val sot = REPL_Serialize.string_of_term pp (Context.Proof ctxt)
+            val sot = RPC_Pretty.string_of_term pp (Context.Proof ctxt)
             val goals = Thm.prems_of (#goal (Proof.goal s))
          in case goals
               of [] => []
@@ -1981,7 +1981,7 @@ fun print_ast verbose kws =
            in if is_some verbose
             then let val s = the sss
                      val ctxt = Proof.context_of s
-                     val sot = REPL_Serialize.string_of_term (the verbose) (Context.Proof ctxt)
+                     val sot = RPC_Pretty.string_of_term (the verbose) (Context.Proof ctxt)
                  val goals = Thm.prems_of (#goal (Proof.goal s))
               in case goals
                    of [] => default NONE
@@ -2047,7 +2047,7 @@ fun print_ast verbose kws =
             else if is_some verbose andalso is_some sss
             then let val s = the sss
                      val ctxt = Proof.context_of s
-                     val sot = REPL_Serialize.string_of_term (the verbose) (Context.Proof ctxt)
+                     val sot = RPC_Pretty.string_of_term (the verbose) (Context.Proof ctxt)
                  val goals = take (length bodys) (Thm.prems_of (#goal (Proof.goal s)))
                  val goals_s =
                     newline i NL :: "(*goals:" ::
@@ -2456,9 +2456,9 @@ fun mk_with_clause ctxt (wth, wthout) =
     @ maps (convert false) wthout
   end
 
-fun eval_singlem (MCRUSH arg) s = Minilang.CRUSH (apsnd (mk_with_clause (Minilang.context_of s)) arg) s
-  | eval_singlem (MSIMP arg ) s = Minilang.SIMP (mk_with_clause (Minilang.context_of s) arg) s
-  | eval_singlem (MINTRO arg) s = uncurry Minilang.INTRO arg s
+fun eval_singlem (MCRUSH arg) s = (#2 (Minilang.CRUSH (apsnd (mk_with_clause (Minilang.context_of s)) arg) s))
+  | eval_singlem (MSIMP arg ) s = (#2 (Minilang.SIMP (mk_with_clause (Minilang.context_of s) arg) s))
+  | eval_singlem (MINTRO (mode, vars)) s = (#2 (Minilang.INTRO mode vars NONE s))
   | eval_singlem (MHAMMER (with_facts, without_facts)) s =
       Minilang.HAMMER { add = with_facts, del = without_facts, only = false } s
   | eval_singlem (MEND ((typ, vs, with_facts, without_facts), _)) s =
@@ -2695,8 +2695,7 @@ fun print_mast kws print_response =
             val hs' = if null hs then []
                       else indent_of i :: "(*introduces facts "
                         :: implode_with' " and " (
-                              map (fn (v,T) => v :: ": " ::
-                                      implode_with " " (map string_of T)) hs) [" *)"]
+                              map (fn (v,T) => v :: ": " :: [string_of T]) hs) [" *)"]
             val gs' = case goals of NONE => []
                          | SOME [] => ["(*no goal remains!*)"]
                          | SOME goals =>
