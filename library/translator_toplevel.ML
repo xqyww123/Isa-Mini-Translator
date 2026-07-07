@@ -170,7 +170,7 @@ fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_comman
               if member (op =) targets "typed_origin"
               then \<^try>\<open>let
                   val ast = MinLang_Translator.anotate_types (state, prf)
-                  val str = MinLang_Translator.print_ast ast
+                  val str = MinLang_Translator.print_ast NONE NONE ast
                in ret := ("typed_origin", (str, [])) :: !ret
               end catch E =>
                   ret := ("typed_origin", ("", [E])) :: !ret \<close>
@@ -212,7 +212,7 @@ fun REPL_plugin targets reporter : REPL.collector = fn cfg => fn {current_comman
               then \<^try>\<open>let
                   val asts = Unsynchronized.ref []
                   val _ = MinLang_Translator.translate_m targets asts (state, prf)
-                  val strs = map (apsnd (apfst MinLang_Translator.print_AST)) (!asts)
+                  val strs = map (apsnd (apfst (MinLang_Translator.print_AST NONE))) (!asts)
                in ret := strs @ !ret
               end catch E =>
                   ret := ("refined", ("", [E])) :: !ret \<close>
@@ -253,6 +253,7 @@ fun translate_file path =
                       import_dir = NONE,
                       single_cmd_timeout = NONE,
                       attributes = [],
+                      configs = [],
                       base_dir = dir,
                       write_thy = false }
                     src

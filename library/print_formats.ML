@@ -26,9 +26,7 @@ fun string_of_term Natural = (fn ctxt =>
                 |> Config.put Printer.show_types_nv false
                 |> Config.put Printer.show_markup false
                 |> Config.put Printer.show_structs false
-                |> Config.put Printer.show_question_marks true
-                |> Config.put Printer.show_brackets false
-       in Syntax.string_of_term ctxt
+                |> Config.put Printer.show_question_marks true       in Syntax.string_of_term ctxt
        #> REPL.trim_makrup
       end)
   | string_of_term Show_Type = (fn ctxt =>
@@ -38,9 +36,7 @@ fun string_of_term Natural = (fn ctxt =>
                 |> Config.put Printer.show_types_nv false
                 |> Config.put Printer.show_markup false
                 |> Config.put Printer.show_structs false
-                |> Config.put Printer.show_question_marks true
-                |> Config.put Printer.show_brackets false
-       in Syntax.string_of_term ctxt
+                |> Config.put Printer.show_question_marks true       in Syntax.string_of_term ctxt
        #> REPL.trim_makrup
       end)
   | string_of_term Show_Type_Sort = (fn ctxt =>
@@ -50,9 +46,7 @@ fun string_of_term Natural = (fn ctxt =>
                 |> Config.put Printer.show_types_nv false
                 |> Config.put Printer.show_markup false
                 |> Config.put Printer.show_structs false
-                |> Config.put Printer.show_question_marks true
-                |> Config.put Printer.show_brackets false
-       in Syntax.string_of_term ctxt
+                |> Config.put Printer.show_question_marks true       in Syntax.string_of_term ctxt
        #> REPL.trim_makrup
       end)
   | string_of_term Show_Type_nv = (fn ctxt =>
@@ -62,9 +56,7 @@ fun string_of_term Natural = (fn ctxt =>
                 |> Config.put Printer.show_types_nv true
                 |> Config.put Printer.show_markup false
                 |> Config.put Printer.show_structs false
-                |> Config.put Printer.show_question_marks true
-                |> Config.put Printer.show_brackets false
-       in Syntax.string_of_term ctxt
+                |> Config.put Printer.show_question_marks true       in Syntax.string_of_term ctxt
        #> REPL.trim_makrup
       end)
   | string_of_term Random_Type_04_Sort_05 = (fn ctxt =>
@@ -75,9 +67,7 @@ fun string_of_term Natural = (fn ctxt =>
                 |> Config.put Printer.show_types_nv false
                 |> Config.put Printer.show_markup false
                 |> Config.put Printer.show_structs false
-                |> Config.put Printer.show_question_marks true
-                |> Config.put Printer.show_brackets false
-       in Syntax.string_of_term ctxt
+                |> Config.put Printer.show_question_marks true       in Syntax.string_of_term ctxt
        #> REPL.trim_makrup
       end)
 

@@ -519,7 +519,7 @@ fun item_reporter (Minilang.New_Items items') =
       let val store = current_case ()
        in store := name
       end
-  | item_reporter (Minilang.Internal (Minilang.SH_PRF prf)) =
+  | item_reporter (Minilang.Internal (Minilang.SH_PRF (prf, _))) =
       let val store = SH_prfs ()
        in store := prf :: !store
       end
@@ -2347,9 +2347,9 @@ fun eval_single (CASE arg) s
   | eval_single (NOTATION (mode, args)) s
       = Proof.write_cmd mode args s
   | eval_single (INCLUDING names) s
-      = Bundle.including_cmd (map (rpair Position.none) names) s
+      = Bundle.including_cmd (map (fn name => ((true, Position.none), (name, Position.none))) names) s
   | eval_single (INCLUDE names) s
-      = Bundle.include_cmd (map (rpair Position.none) names) s
+      = Bundle.include_cmd (map (fn name => ((true, Position.none), (name, Position.none))) names) s
   | eval_single (LET arg) s
       = Proof.let_bind_cmd arg s
   | eval_single (DEFINE (a,b,c)) s = Proof.define_cmd a c b s
@@ -2456,11 +2456,13 @@ fun mk_with_clause ctxt (wth, wthout) =
     @ maps (convert false) wthout
   end
 
-fun eval_singlem (MCRUSH arg) s = (#2 (Minilang.CRUSH (apsnd (mk_with_clause (Minilang.context_of s)) arg) s))
-  | eval_singlem (MSIMP arg ) s = (#2 (Minilang.SIMP (mk_with_clause (Minilang.context_of s) arg) s))
-  | eval_singlem (MINTRO (mode, vars)) s = (#2 (Minilang.INTRO mode vars NONE s))
+fun eval_singlem (MCRUSH arg) s = Minilang.CRUSH (apsnd (mk_with_clause (Minilang.context_of s)) arg) s
+  | eval_singlem (MSIMP arg ) s = Minilang.SIMP (mk_with_clause (Minilang.context_of s) arg) s
+  | eval_singlem (MINTRO (mode, vars)) s = (#2 (Minilang.INTRO mode NONE vars NONE s))
   | eval_singlem (MHAMMER (with_facts, without_facts)) s =
-      Minilang.HAMMER { add = with_facts, del = without_facts, only = false } s
+      let val ovr = { add = with_facts, del = without_facts, only = false }
+      in Minilang.HAMMER (Minilang.default_prover NONE ovr (Minilang.context_of s)) s
+      end
   | eval_singlem (MEND ((typ, vs, with_facts, without_facts), _)) s =
       (case typ of Minilang.T_END => Minilang.END | _ => Minilang.NXT vs)
            { add = with_facts, del = without_facts, only = false } s
@@ -2695,7 +2697,7 @@ fun print_mast kws print_response =
             val hs' = if null hs then []
                       else indent_of i :: "(*introduces facts "
                         :: implode_with' " and " (
-                              map (fn (v,T) => v :: ": " :: [string_of T]) hs) [" *)"]
+                              map (fn (v,T) => v :: ": " :: string_of T) hs) [" *)"]
             val gs' = case goals of NONE => []
                          | SOME [] => ["(*no goal remains!*)"]
                          | SOME goals =>
@@ -3475,9 +3477,11 @@ val rewrite_subgoal = linear_pass NONE (
   fn (s0, SUBGOAL ((a,b,c0), body)) :: L =>
     let val s = the s0
         val (_, vs, _) = strip_hhf (fst (Logic.dest_implies (Thm.prop_of (#goal (Proof.raw_goal s)))))
-        val vs' = Variable.variant_frees (Proof.context_of s)
-                                         (map_filter (fn (SOME name,_) => SOME (Free (name, dummyT))
-                                                       | (NONE, _) => NONE) (snd c0)) vs
+        val vs' = Variable.variant_names
+                    (fold Variable.declare_names
+                          (map_filter (fn (SOME name,_) => SOME (Free (name, dummyT))
+                                        | (NONE, _) => NONE) (snd c0))
+                          (Proof.context_of s)) vs
         fun merge_names [] [] = []
           | merge_names ((name, _) :: L) ((NONE, pos) :: L') = (SOME name, pos) :: merge_names L L'
           | merge_names (_ :: L) (x :: L') = x :: merge_names L L'
