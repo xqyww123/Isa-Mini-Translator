@@ -2476,7 +2476,10 @@ fun eval_singlem (MCRUSH arg) s = Minilang.CRUSH (apsnd (mk_with_clause (Minilan
   | eval_singlem (MHAVE ((a,b,c), _)) s = Minilang.HAVE a b c s
   | eval_singlem (MRULE (rules, facts)  ) s = Minilang.RULE rules facts s
   | eval_singlem (MCHOOSE tm) s = Minilang.CHOOSE'' tm s
-  | eval_singlem (MOPEN_MODULE (expr, _)) s = Minilang.OPEN_MODULE'' expr s
+  | eval_singlem (MOPEN_MODULE (expr, _)) s =
+      (* The translator replays existing Isar `interpret`s: keep the historic
+         single-opaque-predicate behaviour so rendered proofs are unchanged. *)
+      Minilang.OPEN_MODULE'' {auto_unfold_locale=false} expr s
   | eval_singlem (MCFG_FACTS args) s = Minilang.CONFIG_FACTS'' args s
   | eval_singlem (MCFG_BUNDL args) s = Minilang.CONFIG_BUNDL'' args s
   | eval_singlem (MINDUCT args) s = Minilang.INDUCT'' args s
