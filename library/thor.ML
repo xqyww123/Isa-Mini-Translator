@@ -125,7 +125,12 @@ fun translate_SH improved stat commands =
            end
           else Sledgehammer_Fact.no_fact_override
        val sequent_opt' = try (
-                  Phi_Sledgehammer_Solver.all_auto improved override NONE ctxt) sequent
+                  Phi_Sledgehammer_Solver.all_auto
+                    {improved = improved, async = false,
+                     fact_override = override, proof_id = NONE, timeout = NONE,
+                     read_store = NONE, write_store = NONE,
+                     raise_Error_instead_of_Auto_Fail = true} ctxt) sequent
+                       |> Option.map (apfst (snd o Future.join))
     in case sequent_opt'
     of SOME (SH_prf, _) => let
              val (w,wo) = MinLang_Translator.facts_in_SH_return SH_prf
@@ -178,7 +183,12 @@ fun translate_thor improved stat commands =
                          end
                         else Sledgehammer_Fact.no_fact_override
                      val sequent_opt' = try (
-                                Phi_Sledgehammer_Solver.all_auto improved override NONE ctxt) sequent
+                                Phi_Sledgehammer_Solver.all_auto
+                                  {improved = improved, async = false,
+                                   fact_override = override, proof_id = NONE, timeout = NONE,
+                                   read_store = NONE, write_store = NONE,
+                                   raise_Error_instead_of_Auto_Fail = true} ctxt) sequent
+                                     |> Option.map (apfst (snd o Future.join))
                   in case sequent_opt'
                   of SOME (SH_prf, sequent') => let
                            val meth = Method.Basic (K (Method.METHOD (K (K (Seq.single sequent')))))
