@@ -129,7 +129,8 @@ fun translate_SH improved stat commands =
                     {improved = improved, async = false,
                      fact_override = override, proof_id = NONE, timeout = NONE,
                      read_store = NONE, write_store = NONE,
-                     raise_Error_instead_of_Auto_Fail = true} ctxt) sequent
+                     raise_Error_instead_of_Auto_Fail = true,
+                     failure_msg = NONE} ctxt) sequent
                        |> Option.map (apfst (snd o Future.join))
     in case sequent_opt'
     of SOME (SH_prf, _) => let
@@ -187,7 +188,8 @@ fun translate_thor improved stat commands =
                                   {improved = improved, async = false,
                                    fact_override = override, proof_id = NONE, timeout = NONE,
                                    read_store = NONE, write_store = NONE,
-                                   raise_Error_instead_of_Auto_Fail = true} ctxt) sequent
+                                   raise_Error_instead_of_Auto_Fail = true,
+                                   failure_msg = NONE} ctxt) sequent
                                      |> Option.map (apfst (snd o Future.join))
                   in case sequent_opt'
                   of SOME (SH_prf, sequent') => let
