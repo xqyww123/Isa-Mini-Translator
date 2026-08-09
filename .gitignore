@@ -9,7 +9,9 @@
 \#*
 output
 .*#
-*.proof-cache
+*.proof-store
+*.proof-store.lock
+*.proof-store.tmp*
 *.phi-cache
 
 result.csv
