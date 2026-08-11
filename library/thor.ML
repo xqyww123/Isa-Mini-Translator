@@ -124,13 +124,14 @@ fun translate_SH improved stat commands =
             in { add = w, del = wo, only = false }
            end
           else Sledgehammer_Fact.no_fact_override
+       (*No Auto_Fail-to-ERROR conversion here on purpose: the enclosing `try`
+         swallows every non-interrupt exception, so both shapes end in the same
+         `error "translate_SH fails"` below.*)
        val sequent_opt' = try (
                   Phi_Sledgehammer_Solver.all_auto
-                    {improved = improved, async = false,
+                    {improved = improved, async_mode = Phi_Sledgehammer_Solver.Sync,
                      fact_override = override, proof_id = NONE, timeout = NONE,
-                     read_store = NONE, write_store = NONE,
-                     raise_Error_instead_of_Auto_Fail = true,
-                     failure_msg = NONE} ctxt) sequent
+                     read_store = NONE, write_store = NONE} ctxt) sequent
                        |> Option.map (apfst (snd o Future.join))
     in case sequent_opt'
     of SOME (SH_prf, _) => let
@@ -183,13 +184,13 @@ fun translate_thor improved stat commands =
                           in { add = w, del = wo, only = false }
                          end
                         else Sledgehammer_Fact.no_fact_override
+                     (*As above: the `try` makes both failure shapes identical.*)
                      val sequent_opt' = try (
                                 Phi_Sledgehammer_Solver.all_auto
-                                  {improved = improved, async = false,
+                                  {improved = improved,
+                                   async_mode = Phi_Sledgehammer_Solver.Sync,
                                    fact_override = override, proof_id = NONE, timeout = NONE,
-                                   read_store = NONE, write_store = NONE,
-                                   raise_Error_instead_of_Auto_Fail = true,
-                                   failure_msg = NONE} ctxt) sequent
+                                   read_store = NONE, write_store = NONE} ctxt) sequent
                                      |> Option.map (apfst (snd o Future.join))
                   in case sequent_opt'
                   of SOME (SH_prf, sequent') => let
